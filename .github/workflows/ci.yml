@@ -23,40 +23,90 @@ jobs:
       - name: Build (framework-dependent)
         run: dotnet publish core/Diagnyx.Core.csproj -c Release -o publish
 
+      # ── Basic CLI ────────────────────────────────────────────────────────────
+
       - name: Smoke — help
         run: ./publish/diagnyx --help
 
       - name: Smoke — version
         run: ./publish/diagnyx --version
 
-      - name: Smoke — log (info)
+      # ── DX-004: log command ──────────────────────────────────────────────────
+
+      - name: DX-004 — log writes a structured entry (info)
         run: ./publish/diagnyx log --level info --message "CI smoke test" --source ci
 
-      - name: Smoke — log (with context)
+      - name: DX-004 — log writes a structured entry (with context)
         run: ./publish/diagnyx log --level warn --message "context test" --source ci --context '{"run":1}'
 
-      - name: Smoke — log (invalid level, must exit 1)
-        run: |
-          ./publish/diagnyx log --level NOPE --message "bad" && exit 1 || true
+      # ── DX-005: validation ───────────────────────────────────────────────────
 
-      - name: Smoke — log (missing level, must exit 1)
-        run: |
-          ./publish/diagnyx log --message "no level" && exit 1 || true
+      - name: DX-005 — invalid level exits 1
+        run: ./publish/diagnyx log --level NOPE --message "bad" && exit 1 || true
 
-      - name: Smoke — log (missing message, must exit 1)
-        run: |
-          ./publish/diagnyx log --level info && exit 1 || true
+      - name: DX-005 — missing level exits 1
+        run: ./publish/diagnyx log --message "no level" && exit 1 || true
 
-      - name: Smoke — log (bad context JSON, must exit 1)
-        run: |
-          ./publish/diagnyx log --level info --message "bad ctx" --context 'not-json' && exit 1 || true
+      - name: DX-005 — missing message exits 1
+        run: ./publish/diagnyx log --level info && exit 1 || true
 
-      - name: Smoke — init
+      - name: DX-005 — malformed context JSON exits 1
+        run: ./publish/diagnyx log --level info --message "bad ctx" --context 'not-json' && exit 1 || true
+
+      - name: DX-005 — non-object context JSON exits 1
+        run: ./publish/diagnyx log --level info --message "bad ctx" --context '[1,2,3]' && exit 1 || true
+
+      # ── DX-007: init command ─────────────────────────────────────────────────
+
+      - name: DX-007 — init creates config file
         run: |
           mkdir /tmp/initdir
           cd /tmp/initdir && $GITHUB_WORKSPACE/publish/diagnyx init
           test -f /tmp/initdir/diagnyx.config.json
 
-      - name: Smoke — init (already exists, must exit 0)
+      - name: DX-007 — init is no-op if config already exists
+        run: cd /tmp/initdir && $GITHUB_WORKSPACE/publish/diagnyx init
+
+      # ── DX-008: file sink default path ───────────────────────────────────────
+
+      - name: DX-008 — zero-config writes valid NDJSON to default path
         run: |
-          cd /tmp/initdir && $GITHUB_WORKSPACE/publish/diagnyx init
+          rm -rf "$HOME/.diagnyx"
+          ./publish/diagnyx log --level info --message "dx-008 test" --source ci
+          # File must exist at the default location (dirs auto-created)
+          test -f "$HOME/.diagnyx/logs/diagnyx.log"
+          # Every required schema field must be present
+          grep -q '"timestamp"'       "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"level":"info"'    "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"message":"dx-008 test"' "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"source":"ci"'     "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"context":null'    "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"traceId":null'    "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"spanId":null'     "$HOME/.diagnyx/logs/diagnyx.log"
+
+      - name: DX-008 — second log appends a new line (not overwrites)
+        run: |
+          ./publish/diagnyx log --level debug --message "dx-008 append test" --source ci
+          test "$(wc -l < "$HOME/.diagnyx/logs/diagnyx.log")" -ge 2
+
+      # ── DX-009: custom file path via config ──────────────────────────────────
+
+      - name: DX-009 — custom sink.file.path is respected
+        run: |
+          mkdir -p /tmp/dx009
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx009/nested/deep/app.log"}}}' \
+            > /tmp/dx009/diagnyx.config.json
+          cd /tmp/dx009 && $GITHUB_WORKSPACE/publish/diagnyx log \
+            --level debug --message "dx-009 custom-path test" --source ci
+          # File must land at the configured nested path (parent dirs auto-created)
+          test -f /tmp/dx009/nested/deep/app.log
+          grep -q '"level":"debug"' /tmp/dx009/nested/deep/app.log
+
+      - name: DX-009 — tilde path in config is expanded correctly
+        run: |
+          mkdir -p /tmp/dx009tilde
+          printf '{"sink":{"type":"file","file":{"path":"~/.diagnyx/custom/tilde.log"}}}' \
+            > /tmp/dx009tilde/diagnyx.config.json
+          cd /tmp/dx009tilde && $GITHUB_WORKSPACE/publish/diagnyx log \
+            --level info --message "tilde expansion test" --source ci
+          test -f "$HOME/.diagnyx/custom/tilde.log"
