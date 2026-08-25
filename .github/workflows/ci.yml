@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build and smoke-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build (framework-dependent)
+        run: dotnet publish core/Diagnyx.Core.csproj -c Release -o publish
+
+      - name: Smoke — help
+        run: ./publish/diagnyx --help
+
+      - name: Smoke — version
+        run: ./publish/diagnyx --version
+
+      - name: Smoke — log (info)
+        run: ./publish/diagnyx log --level info --message "CI smoke test" --source ci
+
+      - name: Smoke — log (with context)
+        run: ./publish/diagnyx log --level warn --message "context test" --source ci --context '{"run":1}'
+
+      - name: Smoke — log (invalid level, must exit 1)
+        run: |
+          ./publish/diagnyx log --level NOPE --message "bad" && exit 1 || true
+
+      - name: Smoke — log (missing level, must exit 1)
+        run: |
+          ./publish/diagnyx log --message "no level" && exit 1 || true
+
+      - name: Smoke — log (missing message, must exit 1)
+        run: |
+          ./publish/diagnyx log --level info && exit 1 || true
+
+      - name: Smoke — log (bad context JSON, must exit 1)
+        run: |
+          ./publish/diagnyx log --level info --message "bad ctx" --context 'not-json' && exit 1 || true
+
+      - name: Smoke — init
+        run: |
+          mkdir /tmp/initdir
+          cd /tmp/initdir && $GITHUB_WORKSPACE/publish/diagnyx init
+          test -f /tmp/initdir/diagnyx.config.json
+
+      - name: Smoke — init (already exists, must exit 0)
+        run: |
+          cd /tmp/initdir && $GITHUB_WORKSPACE/publish/diagnyx init
