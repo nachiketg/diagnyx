@@ -278,3 +278,21 @@ jobs:
             -Q "SET NOCOUNT ON; SELECT TOP 1 context FROM diagnyx_logs WHERE context IS NOT NULL" \
             -h -1 | tr -d ' \r\n')
           test "$CTX" = '{"mssql":true}'
+
+      # ── DX-016: clear connection errors ─────────────────────────────────────
+
+      - name: DX-016 - failed connection prints actionable error (postgres)
+        run: |
+          printf '{"sink":{"type":"postgres","postgres":{"connectionString":"Host=badhost;Port=5432;Database=x;Username=x;Password=x"}}}' \
+            > /tmp/dx016.json
+          DIAGNYX_CONFIG=/tmp/dx016.json $GITHUB_WORKSPACE/publish/diagnyx log \
+            --level info --message "test" --source ci 2>/tmp/dx016_err.txt && exit 1 || true
+          grep -qi "could not connect to postgresql" /tmp/dx016_err.txt
+
+      - name: DX-016 - failed connection prints actionable error (mysql)
+        run: |
+          printf '{"sink":{"type":"mysql","mysql":{"connectionString":"Server=badhost;Port=3306;Database=x;Uid=x;Pwd=x;"}}}' \
+            > /tmp/dx016m.json
+          DIAGNYX_CONFIG=/tmp/dx016m.json $GITHUB_WORKSPACE/publish/diagnyx log \
+            --level info --message "test" --source ci 2>/tmp/dx016m_err.txt && exit 1 || true
+          grep -qi "could not connect to mysql" /tmp/dx016m_err.txt

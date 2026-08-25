@@ -5,6 +5,8 @@ namespace Diagnyx.Core.Sinks;
 
 internal sealed class SqliteSink(string dbPath) : RdbmsSink(dbPath)
 {
+    protected override string EngineLabel => "SQLite";
+
     protected override string CreateTableSql => """
         CREATE TABLE IF NOT EXISTS diagnyx_logs (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,

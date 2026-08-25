@@ -31,16 +31,19 @@ internal interface ISink
 
 ### 1. Inherit from `RdbmsSink`
 
-`RdbmsSink` provides the complete `Write` implementation. You only override two members:
+`RdbmsSink` provides the complete `Write` implementation. You only override three members:
 
 | Member | What to provide |
 |--------|----------------|
-| `CreateTableSql` | `CREATE TABLE IF NOT EXISTS diagnyx_logs (...)` DDL for your engine |
-| `CreateConnection()` | Open and return a `DbConnection` for your engine |
+| `EngineLabel` | Human-readable name used in error messages (e.g. `"PostgreSQL"`) |
+| `CreateTableSql` | DDL that creates `diagnyx_logs` if it does not exist |
+| `CreateConnection()` | Returns an open-ready `DbConnection` for your engine |
 
 ```csharp
-internal sealed class MyEngineSink(string connectionString) : RdbmsSink
+internal sealed class MyEngineSink(string connectionString) : RdbmsSink(connectionString)
 {
+    protected override string EngineLabel => "MyEngine";
+
     protected override string CreateTableSql => """
         CREATE TABLE IF NOT EXISTS diagnyx_logs (
             id        SERIAL       PRIMARY KEY,
@@ -104,20 +107,20 @@ Add the new sink type to `docs/CONFIG.md` under both the `sink.type` enum table 
 
 ## Shared Table Schema
 
-All RDBMS sinks write to a table named `diagnyx_logs` with this logical column set:
+All RDBMS sinks write to a table named `diagnyx_logs`. Every column uses a text-based type (TEXT, VARCHAR, NVARCHAR) so that plain `string` parameters from ADO.NET bind without driver-level type coercion — no TIMESTAMP, DATETIME, or native JSON columns.
 
-| Column | Type (logical) | Notes |
-|--------|----------------|-------|
+| Column | Logical type | Notes |
+|--------|-------------|-------|
 | `id` | auto-increment integer | Added by the sink; not in the JSON log format |
-| `timestamp` | timestamp / text | UTC; ISO 8601 string from the CLI |
-| `level` | varchar | `debug`, `info`, `warn`, `error`, `fatal` |
+| `timestamp` | text string | UTC; ISO 8601 format (e.g. `2025-08-25T12:34:56.789Z`) |
+| `level` | short string | `debug`, `info`, `warn`, `error`, `fatal` |
 | `message` | text | Unbounded |
-| `source` | varchar | |
-| `context` | text / json | JSON string; use native JSON type where the engine supports it |
-| `trace_id` | varchar | Nullable; reserved for Phase 2 |
-| `span_id` | varchar | Nullable; reserved for Phase 2 |
+| `source` | bounded string | |
+| `context` | text | JSON-encoded string; cast to native JSON at query time if desired |
+| `trace_id` | short string | Nullable; reserved for Phase 2 |
+| `span_id` | short string | Nullable; reserved for Phase 2 |
 
-Engine-specific type mappings are defined in each sink's `CreateTableSql`. See `SCHEMA.md` for the full column reference.
+See `SCHEMA.md` for the precise SQL types used in each supported engine.
 
 ## Adding a Non-RDBMS Sink
 

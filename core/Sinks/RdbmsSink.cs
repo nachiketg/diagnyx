@@ -3,22 +3,17 @@ using Diagnyx.Core.Logging;
 
 namespace Diagnyx.Core.Sinks;
 
-/// <summary>
-/// Template-method base for all RDBMS sinks.
-/// Concrete engines override CreateConnection() and CreateTableSql.
-/// The shared Write path handles table creation, parameter binding,
-/// and error reporting so no logic is duplicated per engine.
-/// </summary>
 internal abstract class RdbmsSink(string connectionString) : ISink
 {
     protected string ConnectionString { get; } = connectionString;
 
-    // Same INSERT SQL works across all supported engines; engines differ
-    // only in CREATE TABLE DDL and the DbConnection they provide.
     private const string InsertSql =
         "INSERT INTO diagnyx_logs " +
         "(timestamp, level, message, source, context, trace_id, span_id) " +
         "VALUES (@timestamp, @level, @message, @source, @context, @traceId, @spanId)";
+
+    /// <summary>Human-readable engine name used in error messages (e.g. "PostgreSQL").</summary>
+    protected abstract string EngineLabel { get; }
 
     /// <summary>DDL that creates diagnyx_logs if it does not yet exist.</summary>
     protected abstract string CreateTableSql { get; }
@@ -28,23 +23,43 @@ internal abstract class RdbmsSink(string connectionString) : ISink
 
     public int Write(LogEntry entry)
     {
+        DbConnection conn;
         try
         {
-            using var conn = CreateConnection();
+            conn = CreateConnection();
             conn.Open();
-            EnsureTable(conn);
-            Insert(conn, entry);
-            return 0;
-        }
-        catch (NotSupportedException ex)
-        {
-            Console.Error.WriteLine($"error: {ex.Message}");
-            return 1;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"error: failed to write log entry: {ex.Message}");
+            Console.Error.WriteLine(
+                $"error: could not connect to {EngineLabel}: {ex.Message}");
             return 1;
+        }
+
+        using (conn)
+        {
+            try
+            {
+                EnsureTable(conn);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"error: {EngineLabel} table setup failed: {ex.Message}");
+                return 1;
+            }
+
+            try
+            {
+                Insert(conn, entry);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"error: {EngineLabel} write failed: {ex.Message}");
+                return 1;
+            }
         }
     }
 

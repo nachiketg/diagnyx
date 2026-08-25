@@ -5,6 +5,8 @@ namespace Diagnyx.Core.Sinks;
 
 internal sealed class MySqlSink(string connectionString) : RdbmsSink(connectionString)
 {
+    protected override string EngineLabel => "MySQL";
+
     // timestamp stored as TEXT so plain string parameters bind without driver
     // type inference. context stored as TEXT for the same reason.
     // ENGINE=InnoDB and utf8mb4 are best-practice defaults for MySQL 8+.

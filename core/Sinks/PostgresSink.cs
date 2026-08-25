@@ -5,6 +5,8 @@ namespace Diagnyx.Core.Sinks;
 
 internal sealed class PostgresSink(string connectionString) : RdbmsSink(connectionString)
 {
+    protected override string EngineLabel => "PostgreSQL";
+
     // timestamp and context stored as TEXT so plain string parameters bind
     // without Npgsql type inference. Cast in queries when needed:
     //   timestamp::timestamptz, context::jsonb
