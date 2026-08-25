@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nachiketg/diagnyx/main/docs/config.schema.json",
+  "sink": {
+    "type": "file",
+    "file": {
+      "path": "~/.diagnyx/logs/diagnyx.log"
+    }
+  },
+  "defaults": {
+    "source": "app"
+  }
+}
