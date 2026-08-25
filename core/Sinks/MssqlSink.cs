@@ -1,20 +1,19 @@
 using System.Data.Common;
+using Microsoft.Data.SqlClient;
 
 namespace Diagnyx.Core.Sinks;
 
-// Implemented in DX-014 (requires Microsoft.Data.SqlClient).
 internal sealed class MssqlSink(string connectionString) : RdbmsSink(connectionString)
 {
-    // MSSQL lacks CREATE TABLE IF NOT EXISTS; use INFORMATION_SCHEMA check instead.
+    // MSSQL lacks CREATE TABLE IF NOT EXISTS; OBJECT_ID check is the idiomatic
+    // T-SQL alternative. timestamp stored as NVARCHAR(50) so plain string
+    // parameters bind without type coercion.
     protected override string CreateTableSql => """
-        IF NOT EXISTS (
-            SELECT 1 FROM INFORMATION_SCHEMA.TABLES
-            WHERE TABLE_NAME = 'diagnyx_logs'
-        )
+        IF OBJECT_ID('diagnyx_logs', 'U') IS NULL
         BEGIN
             CREATE TABLE diagnyx_logs (
                 id        INT IDENTITY(1,1)  PRIMARY KEY,
-                timestamp DATETIMEOFFSET     NOT NULL,
+                timestamp NVARCHAR(50)       NOT NULL,
                 level     NVARCHAR(10)       NOT NULL,
                 message   NVARCHAR(MAX)      NOT NULL,
                 source    NVARCHAR(255)      NOT NULL,
@@ -26,7 +25,5 @@ internal sealed class MssqlSink(string connectionString) : RdbmsSink(connectionS
         """;
 
     protected override DbConnection CreateConnection() =>
-        throw new NotSupportedException(
-            "MSSQL sink requires the Microsoft.Data.SqlClient package. " +
-            "Support is coming in a future release. See docs/CONFIG.md.");
+        new SqlConnection(ConnectionString);
 }
