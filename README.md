@@ -16,7 +16,8 @@ diagnyx/
 │   └── node/               # diagnyx-node — npm wrapper for Node.js apps
 ├── docs/
 │   ├── SCHEMA.md           # Log entry JSON schema (the contract)
-│   └── CONFIG.md           # Config file format reference
+│   ├── CONFIG.md           # Config file format reference
+│   └── EXTENDING_SINKS.md  # How to add a new sink engine
 ├── CONTRIBUTING.md
 └── LICENSE
 ```
