@@ -80,20 +80,37 @@ Minimal valid entry (all optional fields omitted or null):
 
 ## RDBMS Column Mapping
 
-When writing to a relational database sink, the same seven fields map to columns:
+When writing to a relational database sink, the same seven fields map to columns in the `diagnyx_logs` table:
 
-| Column | SQL Type (generic) | Notes |
-|--------|--------------------|-------|
-| `id` | `INTEGER PRIMARY KEY AUTOINCREMENT` / `SERIAL` | Added by the sink; not present in the JSON format. |
-| `timestamp` | `TIMESTAMP` / `DATETIME` | Stored as UTC. |
-| `level` | `VARCHAR(10)` | `debug`, `info`, `warn`, `error`, `fatal`. |
-| `message` | `TEXT` | Unbounded length. |
-| `source` | `VARCHAR(255)` | |
-| `context` | `TEXT` / `JSON` | Stored as a JSON string. Engines that support a native JSON type (Postgres `jsonb`, MySQL `JSON`, MSSQL `NVARCHAR(MAX)`) may use it; SQLite stores as `TEXT`. |
-| `trace_id` | `VARCHAR(64)` | Nullable. |
-| `span_id` | `VARCHAR(32)` | Nullable. |
+| Column | Logical type | Notes |
+|--------|-------------|-------|
+| `id` | auto-increment integer | Added by the sink; not present in the JSON log format. |
+| `timestamp` | ISO 8601 text string | Stored as a plain string — no TIMESTAMP/DATETIME type — so ADO.NET binds without driver type coercion. |
+| `level` | short string | `debug`, `info`, `warn`, `error`, `fatal`. |
+| `message` | unbounded text | |
+| `source` | bounded string | |
+| `context` | JSON-encoded text string | Stored as a plain string regardless of engine. Use a SQL cast when querying as a native JSON type (see per-engine notes below). |
+| `trace_id` | short string | Nullable. |
+| `span_id` | short string | Nullable. |
 
-Table name: `diagnyx_logs` (consistent across all engines).
+### Per-engine column types
+
+All engines use text-based storage for every column to ensure plain `string` parameters from ADO.NET bind without type coercion. The actual SQL types differ per engine but are logically equivalent:
+
+| Column | SQLite | PostgreSQL | MySQL | SQL Server |
+|--------|--------|------------|-------|------------|
+| `id` | `INTEGER PRIMARY KEY AUTOINCREMENT` | `BIGSERIAL PRIMARY KEY` | `INT NOT NULL AUTO_INCREMENT PRIMARY KEY` | `INT IDENTITY(1,1) PRIMARY KEY` |
+| `timestamp` | `TEXT` | `TEXT` | `VARCHAR(50)` | `NVARCHAR(50)` |
+| `level` | `TEXT` | `VARCHAR(10)` | `VARCHAR(10)` | `NVARCHAR(10)` |
+| `message` | `TEXT` | `TEXT` | `TEXT` | `NVARCHAR(MAX)` |
+| `source` | `TEXT` | `VARCHAR(255)` | `VARCHAR(255)` | `NVARCHAR(255)` |
+| `context` | `TEXT` | `TEXT` | `TEXT` | `NVARCHAR(MAX)` |
+| `trace_id` | `TEXT` | `VARCHAR(64)` | `VARCHAR(64)` | `NVARCHAR(64)` |
+| `span_id` | `TEXT` | `VARCHAR(32)` | `VARCHAR(32)` | `NVARCHAR(32)` |
+
+**Querying typed values (PostgreSQL):** cast at query time — `timestamp::timestamptz`, `context::jsonb`.
+
+Table name is `diagnyx_logs` — identical across all engines.
 
 ---
 

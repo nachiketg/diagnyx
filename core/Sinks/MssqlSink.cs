@@ -5,6 +5,8 @@ namespace Diagnyx.Core.Sinks;
 
 internal sealed class MssqlSink(string connectionString) : RdbmsSink(connectionString)
 {
+    protected override string EngineLabel => "SQL Server";
+
     // MSSQL lacks CREATE TABLE IF NOT EXISTS; OBJECT_ID check is the idiomatic
     // T-SQL alternative. timestamp stored as NVARCHAR(50) so plain string
     // parameters bind without type coercion.
