@@ -1,25 +1,26 @@
 using System.Data.Common;
+using Npgsql;
 
 namespace Diagnyx.Core.Sinks;
 
-// Implemented in DX-012 (requires Npgsql).
 internal sealed class PostgresSink(string connectionString) : RdbmsSink(connectionString)
 {
+    // timestamp and context stored as TEXT so plain string parameters bind
+    // without Npgsql type inference. Cast in queries when needed:
+    //   timestamp::timestamptz, context::jsonb
     protected override string CreateTableSql => """
         CREATE TABLE IF NOT EXISTS diagnyx_logs (
             id        BIGSERIAL    PRIMARY KEY,
-            timestamp TIMESTAMPTZ  NOT NULL,
+            timestamp TEXT         NOT NULL,
             level     VARCHAR(10)  NOT NULL,
             message   TEXT         NOT NULL,
             source    VARCHAR(255) NOT NULL,
-            context   JSONB,
+            context   TEXT,
             trace_id  VARCHAR(64),
             span_id   VARCHAR(32)
         )
         """;
 
     protected override DbConnection CreateConnection() =>
-        throw new NotSupportedException(
-            "PostgreSQL sink requires the Npgsql package. " +
-            "Support is coming in a future release. See docs/CONFIG.md.");
+        new NpgsqlConnection(ConnectionString);
 }

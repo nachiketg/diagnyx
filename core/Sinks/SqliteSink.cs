@@ -1,8 +1,8 @@
 using System.Data.Common;
+using Microsoft.Data.Sqlite;
 
 namespace Diagnyx.Core.Sinks;
 
-// Implemented in DX-011 (requires Microsoft.Data.Sqlite).
 internal sealed class SqliteSink(string dbPath) : RdbmsSink(dbPath)
 {
     protected override string CreateTableSql => """
@@ -19,7 +19,5 @@ internal sealed class SqliteSink(string dbPath) : RdbmsSink(dbPath)
         """;
 
     protected override DbConnection CreateConnection() =>
-        throw new NotSupportedException(
-            "SQLite sink requires the Microsoft.Data.Sqlite package. " +
-            "Support is coming in a future release. See docs/CONFIG.md.");
+        new SqliteConnection($"Data Source={ConnectionString}");
 }

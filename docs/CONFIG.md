@@ -79,17 +79,21 @@ Only read when `sink.type` is `"file"`.
 
 ### `sink.sqlite`
 
+**Status: implemented (v1)**
+
 Only read when `sink.type` is `"sqlite"`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `path` | `string` | `~/.diagnyx/diagnyx.db` | Path to the SQLite database file. Created automatically on first run. |
+| `path` | `string` | `~/.diagnyx/diagnyx.db` | Path to the SQLite database file. Created automatically on first run. `~` is expanded. |
 
-The `diagnyx_logs` table is created automatically if it does not exist.
+The `diagnyx_logs` table is created automatically if it does not exist. All columns use SQLite `TEXT` affinity, which is flexible and requires no driver configuration.
 
 ---
 
 ### `sink.postgres`
+
+**Status: implemented (v1)**
 
 Only read when `sink.type` is `"postgres"`.
 
@@ -97,9 +101,13 @@ Only read when `sink.type` is `"postgres"`.
 |-----|------|----------|-------------|
 | `connectionString` | `string` | Yes | A standard [Npgsql connection string](https://www.npgsql.org/doc/connection-string-parameters.html). |
 
+The `diagnyx_logs` table is created automatically on first run. `timestamp` and `context` are stored as `TEXT` for maximum compatibility. To query as typed values use SQL casts: `timestamp::timestamptz`, `context::jsonb`.
+
 ---
 
 ### `sink.mysql`
+
+**Status: coming soon (DX-013)**
 
 Only read when `sink.type` is `"mysql"`.
 
@@ -110,6 +118,8 @@ Only read when `sink.type` is `"mysql"`.
 ---
 
 ### `sink.mssql`
+
+**Status: coming soon (DX-014)**
 
 Only read when `sink.type` is `"mssql"`.
 

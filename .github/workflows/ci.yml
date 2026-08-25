@@ -11,6 +11,20 @@ jobs:
     name: Build and smoke-test
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: diagnyx_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,84 +39,81 @@ jobs:
 
       # ── Basic CLI ────────────────────────────────────────────────────────────
 
-      - name: Smoke — help
+      - name: Smoke - help
         run: ./publish/diagnyx --help
 
-      - name: Smoke — version
+      - name: Smoke - version
         run: ./publish/diagnyx --version
 
       # ── DX-004: log command ──────────────────────────────────────────────────
 
-      - name: DX-004 — log writes a structured entry (info)
+      - name: DX-004 - log writes a structured entry (info)
         run: ./publish/diagnyx log --level info --message "CI smoke test" --source ci
 
-      - name: DX-004 — log writes a structured entry (with context)
+      - name: DX-004 - log writes a structured entry (with context)
         run: ./publish/diagnyx log --level warn --message "context test" --source ci --context '{"run":1}'
 
       # ── DX-005: validation ───────────────────────────────────────────────────
 
-      - name: DX-005 — invalid level exits 1
+      - name: DX-005 - invalid level exits 1
         run: ./publish/diagnyx log --level NOPE --message "bad" && exit 1 || true
 
-      - name: DX-005 — missing level exits 1
+      - name: DX-005 - missing level exits 1
         run: ./publish/diagnyx log --message "no level" && exit 1 || true
 
-      - name: DX-005 — missing message exits 1
+      - name: DX-005 - missing message exits 1
         run: ./publish/diagnyx log --level info && exit 1 || true
 
-      - name: DX-005 — malformed context JSON exits 1
+      - name: DX-005 - malformed context JSON exits 1
         run: ./publish/diagnyx log --level info --message "bad ctx" --context 'not-json' && exit 1 || true
 
-      - name: DX-005 — non-object context JSON exits 1
+      - name: DX-005 - non-object context JSON exits 1
         run: ./publish/diagnyx log --level info --message "bad ctx" --context '[1,2,3]' && exit 1 || true
 
       # ── DX-007: init command ─────────────────────────────────────────────────
 
-      - name: DX-007 — init creates config file
+      - name: DX-007 - init creates config file
         run: |
           mkdir /tmp/initdir
           cd /tmp/initdir && $GITHUB_WORKSPACE/publish/diagnyx init
           test -f /tmp/initdir/diagnyx.config.json
 
-      - name: DX-007 — init is no-op if config already exists
+      - name: DX-007 - init is no-op if config already exists
         run: cd /tmp/initdir && $GITHUB_WORKSPACE/publish/diagnyx init
 
       # ── DX-008: file sink default path ───────────────────────────────────────
 
-      - name: DX-008 — zero-config writes valid NDJSON to default path
+      - name: DX-008 - zero-config writes valid NDJSON to default path
         run: |
           rm -rf "$HOME/.diagnyx"
           ./publish/diagnyx log --level info --message "dx-008 test" --source ci
-          # File must exist at the default location (dirs auto-created)
           test -f "$HOME/.diagnyx/logs/diagnyx.log"
-          # Every required schema field must be present
-          grep -q '"timestamp"'       "$HOME/.diagnyx/logs/diagnyx.log"
-          grep -q '"level":"info"'    "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"timestamp"'            "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"level":"info"'         "$HOME/.diagnyx/logs/diagnyx.log"
           grep -q '"message":"dx-008 test"' "$HOME/.diagnyx/logs/diagnyx.log"
-          grep -q '"source":"ci"'     "$HOME/.diagnyx/logs/diagnyx.log"
-          grep -q '"context":null'    "$HOME/.diagnyx/logs/diagnyx.log"
-          grep -q '"traceId":null'    "$HOME/.diagnyx/logs/diagnyx.log"
-          grep -q '"spanId":null'     "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"source":"ci"'          "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"context":null'         "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"traceId":null'         "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"spanId":null'          "$HOME/.diagnyx/logs/diagnyx.log"
 
-      - name: DX-008 — second log appends a new line (not overwrites)
+      - name: DX-008 - second log appends a new line (not overwrites)
         run: |
           ./publish/diagnyx log --level debug --message "dx-008 append test" --source ci
           test "$(wc -l < "$HOME/.diagnyx/logs/diagnyx.log")" -ge 2
 
       # ── DX-009: custom file path via config ──────────────────────────────────
 
-      - name: DX-009 — custom sink.file.path is respected
+      - name: DX-009 - custom sink.file.path is respected
         run: |
           mkdir -p /tmp/dx009
           printf '{"sink":{"type":"file","file":{"path":"/tmp/dx009/nested/deep/app.log"}}}' \
             > /tmp/dx009/diagnyx.config.json
           cd /tmp/dx009 && $GITHUB_WORKSPACE/publish/diagnyx log \
             --level debug --message "dx-009 custom-path test" --source ci
-          # File must land at the configured nested path (parent dirs auto-created)
           test -f /tmp/dx009/nested/deep/app.log
           grep -q '"level":"debug"' /tmp/dx009/nested/deep/app.log
 
-      - name: DX-009 — tilde path in config is expanded correctly
+      - name: DX-009 - tilde path in config is expanded correctly
         run: |
           mkdir -p /tmp/dx009tilde
           printf '{"sink":{"type":"file","file":{"path":"~/.diagnyx/custom/tilde.log"}}}' \
@@ -110,3 +121,57 @@ jobs:
           cd /tmp/dx009tilde && $GITHUB_WORKSPACE/publish/diagnyx log \
             --level info --message "tilde expansion test" --source ci
           test -f "$HOME/.diagnyx/custom/tilde.log"
+
+      # ── DX-011: SQLite sink ──────────────────────────────────────────────────
+
+      - name: DX-011 - SQLite sink writes rows and auto-creates table
+        run: |
+          mkdir -p /tmp/dx011
+          printf '{"sink":{"type":"sqlite","sqlite":{"path":"/tmp/dx011/diagnyx.db"}}}' \
+            > /tmp/dx011/diagnyx.config.json
+          cd /tmp/dx011 && $GITHUB_WORKSPACE/publish/diagnyx log \
+            --level info --message "sqlite test" --source ci
+          test -f /tmp/dx011/diagnyx.db
+          COUNT=$(sqlite3 /tmp/dx011/diagnyx.db 'SELECT COUNT(*) FROM diagnyx_logs')
+          test "$COUNT" -eq 1
+
+      - name: DX-011 - SQLite sink appends on subsequent writes
+        run: |
+          cd /tmp/dx011 && $GITHUB_WORKSPACE/publish/diagnyx log \
+            --level warn --message "sqlite second entry" --source ci --context '{"k":"v"}'
+          COUNT=$(sqlite3 /tmp/dx011/diagnyx.db 'SELECT COUNT(*) FROM diagnyx_logs')
+          test "$COUNT" -eq 2
+
+      - name: DX-011 - SQLite sink stores context as JSON text
+        run: |
+          CTX=$(sqlite3 /tmp/dx011/diagnyx.db "SELECT context FROM diagnyx_logs WHERE context IS NOT NULL LIMIT 1")
+          test "$CTX" = '{"k":"v"}'
+
+      # ── DX-012: PostgreSQL sink ──────────────────────────────────────────────
+
+      - name: DX-012 - PostgreSQL sink writes rows and auto-creates table
+        env:
+          DIAGNYX_CONFIG: /tmp/dx012.json
+        run: |
+          printf '{"sink":{"type":"postgres","postgres":{"connectionString":"Host=localhost;Port=5432;Database=diagnyx_test;Username=postgres;Password=postgres"}}}' \
+            > /tmp/dx012.json
+          $GITHUB_WORKSPACE/publish/diagnyx log \
+            --level info --message "postgres test" --source ci
+          COUNT=$(PGPASSWORD=postgres psql -h localhost -U postgres -d diagnyx_test \
+            -t -c "SELECT COUNT(*) FROM diagnyx_logs;" | tr -d ' \n')
+          test "$COUNT" -eq 1
+
+      - name: DX-012 - PostgreSQL sink appends on subsequent writes
+        env:
+          DIAGNYX_CONFIG: /tmp/dx012.json
+        run: |
+          $GITHUB_WORKSPACE/publish/diagnyx log \
+            --level error --message "postgres second entry" --source ci --context '{"pg":true}'
+          COUNT=$(PGPASSWORD=postgres psql -h localhost -U postgres -d diagnyx_test \
+            -t -c "SELECT COUNT(*) FROM diagnyx_logs;" | tr -d ' \n')
+          test "$COUNT" -eq 2
+
+      - name: DX-012 - PostgreSQL sink stores all schema fields
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d diagnyx_test \
+            -c "SELECT timestamp, level, message, source, context, trace_id, span_id FROM diagnyx_logs LIMIT 1;"
