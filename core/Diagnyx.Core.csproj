@@ -10,8 +10,10 @@
 
     <!-- Native AOT -->
     <PublishAot>true</PublishAot>
-    <InvariantGlobalization>true</InvariantGlobalization>
     <StripSymbols>true</StripSymbols>
+    <!-- InvariantGlobalization omitted: Microsoft.Data.SqlClient explicitly
+         throws NotSupportedException when invariant mode is active. All five
+         sinks work correctly with the system ICU/NLS globalization stack. -->
   </PropertyGroup>
 
   <ItemGroup>
