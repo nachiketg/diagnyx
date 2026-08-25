@@ -107,7 +107,7 @@ The `diagnyx_logs` table is created automatically on first run. `timestamp` and 
 
 ### `sink.mysql`
 
-**Status: coming soon (DX-013)**
+**Status: implemented (v1)**
 
 Only read when `sink.type` is `"mysql"`.
 
@@ -115,17 +115,21 @@ Only read when `sink.type` is `"mysql"`.
 |-----|------|----------|-------------|
 | `connectionString` | `string` | Yes | A standard [MySqlConnector connection string](https://mysqlconnector.net/connection-options/). |
 
+The `diagnyx_logs` table is created automatically on first run using `InnoDB` / `utf8mb4`. `timestamp` and `context` are stored as `VARCHAR(50)` and `TEXT` respectively, so plain string parameters from ADO.NET bind without driver type coercion.
+
 ---
 
 ### `sink.mssql`
 
-**Status: coming soon (DX-014)**
+**Status: implemented (v1)**
 
 Only read when `sink.type` is `"mssql"`.
 
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `connectionString` | `string` | Yes | A standard [Microsoft.Data.SqlClient connection string](https://learn.microsoft.com/en-us/dotnet/api/microsoft.data.sqlclient.sqlconnection.connectionstring). |
+
+The `diagnyx_logs` table is created automatically on first run. `timestamp` is stored as `NVARCHAR(50)` (ISO 8601 string) for consistent TEXT storage across all engines. Include `TrustServerCertificate=True` in the connection string when connecting to a local or self-signed instance.
 
 ---
 
@@ -190,6 +194,32 @@ The value used for the `source` field when `--source` is not passed to `diagnyx 
     "type": "postgres",
     "postgres": {
       "connectionString": "Host=localhost;Port=5432;Database=diagnyx;Username=diagnyx_user;Password=s3cr3t"
+    }
+  }
+}
+```
+
+### MySQL
+
+```json
+{
+  "sink": {
+    "type": "mysql",
+    "mysql": {
+      "connectionString": "Server=localhost;Port=3306;Database=diagnyx;Uid=diagnyx_user;Pwd=s3cr3t;"
+    }
+  }
+}
+```
+
+### Microsoft SQL Server
+
+```json
+{
+  "sink": {
+    "type": "mssql",
+    "mssql": {
+      "connectionString": "Server=localhost;Database=diagnyx;User Id=diagnyx_user;Password=s3cr3t;TrustServerCertificate=True"
     }
   }
 }
