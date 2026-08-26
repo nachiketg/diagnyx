@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Diagnyx</AssemblyName>
+    <RootNamespace>Diagnyx</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- NuGet package metadata (DX-019) -->
+  <PropertyGroup>
+    <PackageId>diagnyx-dotnet</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Nachiket Ghatole</Authors>
+    <Description>Thin .NET client for the Diagnyx structured logging CLI. Provides DiagnyxLogger, which calls the diagnyx binary to write structured JSON log entries to any configured sink (file, SQLite, PostgreSQL, MySQL, SQL Server).</Description>
+    <PackageTags>logging;structured-logging;diagnyx;observability;json;ndjson</PackageTags>
+    <PackageProjectUrl>https://github.com/nachiketg/diagnyx</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/nachiketg/diagnyx</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <!-- tests/ is a sibling project; exclude it from this library's glob patterns -->
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+    <EmbeddedResource Remove="tests/**" />
+    <None Remove="tests/**" />
+  </ItemGroup>
+
+</Project>

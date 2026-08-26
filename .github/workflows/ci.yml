@@ -296,3 +296,26 @@ jobs:
           DIAGNYX_CONFIG=/tmp/dx016m.json $GITHUB_WORKSPACE/publish/diagnyx log \
             --level info --message "test" --source ci 2>/tmp/dx016m_err.txt && exit 1 || true
           grep -qi "could not connect to mysql" /tmp/dx016m_err.txt
+
+      # ── DX-017/018/019: .NET SDK package ─────────────────────────────────────
+
+      - name: DX-019 - .NET SDK builds without warnings
+        run: dotnet build packages/dotnet/Diagnyx.Client.csproj -c Release
+
+      - name: DX-019 - .NET SDK produces valid NuGet package
+        run: |
+          dotnet pack packages/dotnet/Diagnyx.Client.csproj -c Release -o /tmp/nupkg
+          ls /tmp/nupkg/diagnyx-dotnet.*.nupkg
+
+      - name: DX-019 - .NET SDK smoke test via CLI binary
+        env:
+          DIAGNYX_PATH: ./publish/diagnyx
+          DIAGNYX_CONFIG: /tmp/dx019.json
+        run: |
+          mkdir -p /tmp/dx019
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx019/sdk.log"}}}' \
+            > /tmp/dx019.json
+          dotnet run --project packages/dotnet/tests/SmokeTest/SmokeTest.csproj
+          test -f /tmp/dx019/sdk.log
+          grep -q '"level":"info"'   /tmp/dx019/sdk.log
+          grep -q '"source":"sdk-test"' /tmp/dx019/sdk.log
