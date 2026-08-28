@@ -1,0 +1,26 @@
+{
+  "name": "diagnyx-node",
+  "version": "0.1.0",
+  "description": "Thin Node.js client for the Diagnyx structured logging CLI",
+  "main": "index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "logging",
+    "structured-logging",
+    "diagnyx",
+    "observability",
+    "json",
+    "ndjson"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nachiketg/diagnyx.git"
+  },
+  "homepage": "https://github.com/nachiketg/diagnyx#readme",
+  "bugs": {
+    "url": "https://github.com/nachiketg/diagnyx/issues"
+  }
+}
