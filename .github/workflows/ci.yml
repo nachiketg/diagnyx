@@ -319,3 +319,27 @@ jobs:
           test -f /tmp/dx019/sdk.log
           grep -q '"level":"info"'   /tmp/dx019/sdk.log
           grep -q '"source":"sdk-test"' /tmp/dx019/sdk.log
+
+      # ── DX-020/021/022: Node.js SDK package ──────────────────────────────────
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: DX-022 - Node.js SDK syntax check (zero dependencies, no install needed)
+        run: node --check packages/node/index.js
+
+      - name: DX-022 - Node.js SDK smoke test via CLI binary
+        env:
+          DIAGNYX_PATH: ./publish/diagnyx
+          DIAGNYX_CONFIG: /tmp/dx022.json
+        run: |
+          mkdir -p /tmp/dx022
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx022/sdk.log"}}}' \
+            > /tmp/dx022.json
+          node packages/node/tests/smoke.js
+          test -f /tmp/dx022/sdk.log
+          grep -q '"level":"info"'              /tmp/dx022/sdk.log
+          grep -q '"source":"sdk-test-node"'    /tmp/dx022/sdk.log
+          grep -q '"message":"node SDK smoke test"' /tmp/dx022/sdk.log
