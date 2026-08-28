@@ -39,10 +39,12 @@ jobs:
       - name: Publish Native AOT
         shell: bash
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
           dotnet publish core/Diagnyx.Core.csproj \
             -c Release \
             -r ${{ matrix.rid }} \
             --self-contained \
+            -p:Version="$VERSION" \
             -o publish
 
       - name: Upload artifact
@@ -53,11 +55,25 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Create GitHub Release
+    name: Create GitHub Release and publish packages
     needs: build
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -70,7 +86,7 @@ jobs:
           cp artifacts/diagnyx-osx-arm64/diagnyx      diagnyx-osx-arm64
           chmod +x diagnyx-linux-x64 diagnyx-osx-arm64
 
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
@@ -78,3 +94,24 @@ jobs:
             diagnyx-win-x64.exe
             diagnyx-linux-x64
             diagnyx-osx-arm64
+
+      - name: Pack and publish NuGet package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          dotnet pack packages/dotnet/Diagnyx.Client.csproj \
+            -c Release \
+            -p:Version="$VERSION" \
+            -o nupkg
+          dotnet nuget push nupkg/*.nupkg \
+            --api-key "${{ secrets.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Publish npm package
+        working-directory: packages/node
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

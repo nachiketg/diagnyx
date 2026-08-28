@@ -1,11 +1,13 @@
 using Diagnyx.Core.Commands;
+using System.Reflection;
 
 if (args.Length == 0 || args[0] is "--help" or "-h" or "help")
     return PrintHelp();
 
 if (args[0] is "--version" or "-v" or "version")
 {
-    Console.WriteLine("diagnyx 0.1.0");
+    var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+    Console.WriteLine($"diagnyx {version}");
     return 0;
 }
 
