@@ -320,6 +320,37 @@ jobs:
           grep -q '"level":"info"'   /tmp/dx019/sdk.log
           grep -q '"source":"sdk-test"' /tmp/dx019/sdk.log
 
+      - name: DX-017 - NuGet package bundles the platform-specific binary
+        run: |
+          mkdir -p packages/dotnet/runtimes/win-x64/native
+          mkdir -p packages/dotnet/runtimes/linux-x64/native
+          mkdir -p packages/dotnet/runtimes/osx-arm64/native
+          echo fake-win   > packages/dotnet/runtimes/win-x64/native/diagnyx.bin
+          echo fake-linux > packages/dotnet/runtimes/linux-x64/native/diagnyx.bin
+          echo fake-osx   > packages/dotnet/runtimes/osx-arm64/native/diagnyx.bin
+          dotnet pack packages/dotnet/Diagnyx.Client.csproj -c Release -o /tmp/nupkg-dx017
+          unzip -l /tmp/nupkg-dx017/diagnyx-dotnet.*.nupkg > /tmp/dx017_listing.txt
+          grep -q 'runtimes/win-x64/native/diagnyx.bin'   /tmp/dx017_listing.txt
+          grep -q 'runtimes/linux-x64/native/diagnyx.bin' /tmp/dx017_listing.txt
+          grep -q 'runtimes/osx-arm64/native/diagnyx.bin' /tmp/dx017_listing.txt
+          ! grep -q 'runtimes/runtimes' /tmp/dx017_listing.txt
+          rm -rf packages/dotnet/runtimes
+
+      - name: DX-017 - .NET SDK resolves and invokes the bundled binary
+        run: |
+          rm -rf /tmp/dx017-smoketest-out
+          dotnet build packages/dotnet/tests/SmokeTest/SmokeTest.csproj -c Release -o /tmp/dx017-smoketest-out
+          mkdir -p /tmp/dx017-smoketest-out/runtimes/linux-x64/native
+          cat > /tmp/dx017-smoketest-out/runtimes/linux-x64/native/diagnyx.bin <<'SCRIPT'
+          #!/bin/bash
+          echo "DX017_BUNDLED_BINARY_INVOKED"
+          exit 0
+          SCRIPT
+          chmod +x /tmp/dx017-smoketest-out/runtimes/linux-x64/native/diagnyx.bin
+          env -u DIAGNYX_PATH dotnet /tmp/dx017-smoketest-out/SmokeTest.dll \
+            > /tmp/dx017_bundled_out.txt
+          grep -q "DX017_BUNDLED_BINARY_INVOKED" /tmp/dx017_bundled_out.txt
+
       - name: DX-019 - .NET SDK fails gracefully when the binary cannot be resolved
         run: |
           code=0

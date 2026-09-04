@@ -6,7 +6,9 @@ Thin .NET client for the [Diagnyx](https://github.com/nachiketg/diagnyx) structu
 
 ## Prerequisites
 
-Install the Diagnyx CLI for your platform from the [releases page](https://github.com/nachiketg/diagnyx/releases), or build from source:
+None on win-x64, linux-x64, or osx-arm64 — the package bundles the matching `diagnyx` binary for those platforms, so `dotnet add package diagnyx-dotnet` is enough on its own.
+
+On any other platform, install the Diagnyx CLI from the [releases page](https://github.com/nachiketg/diagnyx/releases), or build from source, then point `DiagnyxLogger` at it via the `binaryPath` constructor argument or the `DIAGNYX_PATH` environment variable (see [Binary Discovery](#binary-discovery)):
 
 ```bash
 git clone https://github.com/nachiketg/diagnyx
@@ -40,7 +42,8 @@ Each call invokes `diagnyx log` and returns the exit code (`0` = success, `1` = 
 
 1. The `binaryPath` constructor argument.
 2. The `DIAGNYX_PATH` environment variable.
-3. `diagnyx` (or `diagnyx.exe` on Windows) on the system PATH.
+3. The binary bundled inside the NuGet package (win-x64, linux-x64, osx-arm64 only).
+4. `diagnyx` (or `diagnyx.exe` on Windows) on the system PATH.
 
 ```csharp
 // Explicit path
