@@ -51,6 +51,8 @@ var logger = new DiagnyxLogger("my-api", binaryPath: "/opt/diagnyx/diagnyx");
 var logger = new DiagnyxLogger("my-api");
 ```
 
+If the binary cannot be found or fails to run, `DiagnyxLogger` does not throw: it prints a warning to `Console.Error` and the call returns `1`, so a missing or broken CLI never crashes the host application.
+
 ## API Reference
 
 ### `DiagnyxLogger(string source, string? binaryPath = null)`
