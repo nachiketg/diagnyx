@@ -395,3 +395,27 @@ jobs:
           grep -q '"level":"info"'              /tmp/dx022/sdk.log
           grep -q '"source":"sdk-test-node"'    /tmp/dx022/sdk.log
           grep -q '"message":"node SDK smoke test"' /tmp/dx022/sdk.log
+
+      - name: DX-022 - Node.js SDK fails gracefully when the binary cannot be resolved
+        run: |
+          code=0
+          env -u DIAGNYX_PATH node -e '
+            const { DiagnyxLogger } = require("./packages/node");
+            process.exit(new DiagnyxLogger("ci").info("hello"));
+          ' 2>/tmp/dx022_missing_err.txt || code=$?
+          test "$code" -eq 1
+          grep -qi "diagnyx: warning: diagnyx binary not found" /tmp/dx022_missing_err.txt
+          ! grep -qi "throw\|uncaught" /tmp/dx022_missing_err.txt
+
+      - name: DX-022 - Node.js SDK fails gracefully when the binary fails to start
+        env:
+          DIAGNYX_PATH: /tmp/does-not-exist/diagnyx
+        run: |
+          code=0
+          node -e '
+            const { DiagnyxLogger } = require("./packages/node");
+            process.exit(new DiagnyxLogger("ci").info("hello"));
+          ' 2>/tmp/dx022_start_err.txt || code=$?
+          test "$code" -eq 1
+          grep -qi "diagnyx: warning: failed to invoke diagnyx cli" /tmp/dx022_start_err.txt
+          ! grep -qi "throw\|uncaught" /tmp/dx022_start_err.txt
