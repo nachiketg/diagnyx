@@ -24,35 +24,39 @@ diagnyx/
 
 ## Quick Start
 
-> **Note:** v1 is under active development. Installation steps below will be finalized on first release.
+> **Note:** v1 is under active development. No release has been published yet — these are the install commands and API shape once one is.
 
 ### .NET
 
 ```bash
-dotnet add package Diagnyx
+dotnet add package diagnyx-dotnet
 ```
 
 ```csharp
 using Diagnyx;
 
-var logger = new Logger();
+var logger = new DiagnyxLogger("my-service");
 logger.Info("App started", new { userId = 42 });
 logger.Error("Something went wrong", new { errorCode = 500 });
 ```
 
+No separate CLI install needed on win-x64, linux-x64, or osx-arm64 — the package bundles the matching `diagnyx` binary. See [packages/dotnet/README.md](packages/dotnet/README.md) for details.
+
 ### Node.js
 
 ```bash
-npm install diagnyx
+npm install diagnyx-node
 ```
 
 ```js
-const { createLogger } = require('diagnyx');
+const { DiagnyxLogger } = require('diagnyx-node');
 
-const logger = createLogger({ source: 'my-service' });
+const logger = new DiagnyxLogger('my-service');
 logger.info('App started', { userId: 42 });
 logger.error('Something went wrong', { errorCode: 500 });
 ```
+
+No separate CLI install needed on win-x64, linux-x64, or osx-arm64 — a `postinstall` step fetches the matching `diagnyx` binary automatically. See [packages/node/README.md](packages/node/README.md) for details.
 
 ## Log Format
 
