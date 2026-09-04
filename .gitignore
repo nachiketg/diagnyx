@@ -8,6 +8,7 @@ obj/
 *.snupkg
 publish/
 artifacts/
+packages/dotnet/runtimes/
 
 # Node.js
 node_modules/

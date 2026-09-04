@@ -33,6 +33,7 @@ Before your first release, add these secrets to the GitHub repository (`Settings
 3. **GitHub Actions takes over** — the `release.yml` workflow triggers on the `v*` tag and:
    - Builds Native AOT binaries for `linux-x64`, `win-x64`, `osx-arm64` (each with the version baked in via `-p:Version=<version>`)
    - Creates a GitHub Release with the three platform binaries attached and auto-generated release notes
+   - Stages those same three binaries into `packages/dotnet/runtimes/{rid}/native/diagnyx.bin` so the NuGet package bundles them (DX-017)
    - Packs and pushes `diagnyx-dotnet` to NuGet.org (`NUGET_API_KEY`)
    - Publishes `diagnyx-node` to npmjs.com (`NPM_TOKEN`)
 

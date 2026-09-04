@@ -95,6 +95,17 @@ jobs:
             diagnyx-linux-x64
             diagnyx-osx-arm64
 
+      - name: Stage native binaries into the NuGet package (DX-017)
+        run: |
+          mkdir -p packages/dotnet/runtimes/win-x64/native
+          mkdir -p packages/dotnet/runtimes/linux-x64/native
+          mkdir -p packages/dotnet/runtimes/osx-arm64/native
+          cp diagnyx-win-x64.exe   packages/dotnet/runtimes/win-x64/native/diagnyx.bin
+          cp diagnyx-linux-x64     packages/dotnet/runtimes/linux-x64/native/diagnyx.bin
+          cp diagnyx-osx-arm64     packages/dotnet/runtimes/osx-arm64/native/diagnyx.bin
+          chmod +x packages/dotnet/runtimes/linux-x64/native/diagnyx.bin \
+                   packages/dotnet/runtimes/osx-arm64/native/diagnyx.bin
+
       - name: Pack and publish NuGet package
         run: |
           VERSION="${GITHUB_REF_NAME#v}"

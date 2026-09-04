@@ -65,6 +65,7 @@ internal sealed class CliRunner
     private string ResolveBinaryPath() =>
         _explicitBinaryPath
         ?? Environment.GetEnvironmentVariable("DIAGNYX_PATH")
+        ?? FindBundled()
         ?? FindInPath()
         ?? throw new InvalidOperationException(
             "diagnyx binary not found. " +
@@ -74,18 +75,46 @@ internal sealed class CliRunner
     private static void Warn(string message) =>
         Console.Error.WriteLine($"diagnyx: warning: {message.TrimEnd('.')}. Log entry dropped.");
 
+    private static readonly string BinaryFileName =
+        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "diagnyx.exe" : "diagnyx";
+
+    /// <summary>
+    /// Looks for the diagnyx binary shipped inside the NuGet package's
+    /// "runtimes/{rid}/native/" folder, which NuGet copies next to the
+    /// consuming app's own output at build time. Only the RIDs Diagnyx
+    /// ships (win-x64, linux-x64, osx-arm64) are probed; other platforms
+    /// fall through to <see cref="FindInPath"/>. Packed as "diagnyx.bin"
+    /// rather than the CLI's real name -- see Diagnyx.Client.csproj for why.
+    /// </summary>
+    private static string? FindBundled()
+    {
+        var rid = CurrentRid();
+        if (rid is null)
+            return null;
+
+        var candidate = Path.Combine(AppContext.BaseDirectory, "runtimes", rid, "native", "diagnyx.bin");
+        return File.Exists(candidate) ? candidate : null;
+    }
+
+    private static string? CurrentRid()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && RuntimeInformation.OSArchitecture == Architecture.X64)
+            return "win-x64";
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && RuntimeInformation.OSArchitecture == Architecture.X64)
+            return "linux-x64";
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && RuntimeInformation.OSArchitecture == Architecture.Arm64)
+            return "osx-arm64";
+        return null;
+    }
+
     private static string? FindInPath()
     {
-        var binary = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? "diagnyx.exe"
-            : "diagnyx";
-
         var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
 
         foreach (var dir in pathEnv.Split(Path.PathSeparator))
         {
             if (string.IsNullOrWhiteSpace(dir)) continue;
-            var candidate = Path.Combine(dir.Trim(), binary);
+            var candidate = Path.Combine(dir.Trim(), BinaryFileName);
             if (File.Exists(candidate))
                 return candidate;
         }

@@ -27,6 +27,22 @@
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
+  <!--
+    Platform binaries staged into runtimes/{rid}/native/diagnyx.bin by the
+    release workflow before packing (DX-017). Absent locally, so each
+    Update below matches nothing in a normal dev build. Packed under the
+    ".bin" name (not the CLI's real "diagnyx"/"diagnyx.exe" name) because
+    NuGet's pack target appends the source item's own relative path
+    underneath PackagePath whenever the source file has no extension,
+    which double-nests extensionless native executables; CliRunner's
+    FindBundled() looks for this same "diagnyx.bin" name.
+  -->
+  <ItemGroup>
+    <None Update="runtimes/win-x64/native/diagnyx.bin"   Pack="true" PackagePath="runtimes/win-x64/native/diagnyx.bin" />
+    <None Update="runtimes/linux-x64/native/diagnyx.bin" Pack="true" PackagePath="runtimes/linux-x64/native/diagnyx.bin" />
+    <None Update="runtimes/osx-arm64/native/diagnyx.bin" Pack="true" PackagePath="runtimes/osx-arm64/native/diagnyx.bin" />
+  </ItemGroup>
+
   <!-- tests/ is a sibling project; exclude it from this library's glob patterns -->
   <ItemGroup>
     <Compile Remove="tests/**" />
