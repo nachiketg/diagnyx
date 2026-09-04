@@ -51,6 +51,8 @@ const logger = new DiagnyxLogger('my-api', '/opt/diagnyx/diagnyx');
 const logger = new DiagnyxLogger('my-api');
 ```
 
+If the binary cannot be found or fails to run, `DiagnyxLogger` does not throw: it prints a warning to the console and the call returns `1`, so a missing or broken CLI never crashes the host application.
+
 ## API Reference
 
 ### `new DiagnyxLogger(source, binaryPath?)`
