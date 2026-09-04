@@ -320,6 +320,25 @@ jobs:
           grep -q '"level":"info"'   /tmp/dx019/sdk.log
           grep -q '"source":"sdk-test"' /tmp/dx019/sdk.log
 
+      - name: DX-019 - .NET SDK fails gracefully when the binary cannot be resolved
+        run: |
+          env -u DIAGNYX_PATH \
+            dotnet run --project packages/dotnet/tests/SmokeTest/SmokeTest.csproj \
+            2>/tmp/dx019_missing_err.txt; code=$?
+          test "$code" -eq 1
+          grep -qi "diagnyx: warning: diagnyx binary not found" /tmp/dx019_missing_err.txt
+          ! grep -qi "unhandled exception" /tmp/dx019_missing_err.txt
+
+      - name: DX-019 - .NET SDK fails gracefully when the binary fails to start
+        env:
+          DIAGNYX_PATH: /tmp/does-not-exist/diagnyx
+        run: |
+          dotnet run --project packages/dotnet/tests/SmokeTest/SmokeTest.csproj \
+            2>/tmp/dx019_start_err.txt; code=$?
+          test "$code" -eq 1
+          grep -qi "diagnyx: warning: failed to invoke diagnyx cli" /tmp/dx019_start_err.txt
+          ! grep -qi "unhandled exception" /tmp/dx019_start_err.txt
+
       # ── DX-020/021/022: Node.js SDK package ──────────────────────────────────
 
       - name: Setup Node.js

@@ -25,7 +25,10 @@ public sealed class DiagnyxLogger
     /// DIAGNYX_PATH env var or PATH discovery.
     /// </param>
     /// <exception cref="ArgumentException">Thrown when <paramref name="source"/> is null or whitespace.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the diagnyx binary cannot be found.</exception>
+    /// <remarks>
+    /// If the diagnyx binary cannot be found or fails to run, log calls do not throw:
+    /// they print a warning to <see cref="Console.Error"/> and return <c>1</c>.
+    /// </remarks>
     public DiagnyxLogger(string source, string? binaryPath = null)
     {
         if (string.IsNullOrWhiteSpace(source))
