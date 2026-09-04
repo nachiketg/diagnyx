@@ -322,9 +322,10 @@ jobs:
 
       - name: DX-019 - .NET SDK fails gracefully when the binary cannot be resolved
         run: |
+          code=0
           env -u DIAGNYX_PATH \
             dotnet run --project packages/dotnet/tests/SmokeTest/SmokeTest.csproj \
-            2>/tmp/dx019_missing_err.txt; code=$?
+            2>/tmp/dx019_missing_err.txt || code=$?
           test "$code" -eq 1
           grep -qi "diagnyx: warning: diagnyx binary not found" /tmp/dx019_missing_err.txt
           ! grep -qi "unhandled exception" /tmp/dx019_missing_err.txt
@@ -333,8 +334,9 @@ jobs:
         env:
           DIAGNYX_PATH: /tmp/does-not-exist/diagnyx
         run: |
+          code=0
           dotnet run --project packages/dotnet/tests/SmokeTest/SmokeTest.csproj \
-            2>/tmp/dx019_start_err.txt; code=$?
+            2>/tmp/dx019_start_err.txt || code=$?
           test "$code" -eq 1
           grep -qi "diagnyx: warning: failed to invoke diagnyx cli" /tmp/dx019_start_err.txt
           ! grep -qi "unhandled exception" /tmp/dx019_start_err.txt
