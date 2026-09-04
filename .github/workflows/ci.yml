@@ -419,3 +419,29 @@ jobs:
           test "$code" -eq 1
           grep -qi "diagnyx: warning: failed to invoke diagnyx cli" /tmp/dx022_start_err.txt
           ! grep -qi "throw\|uncaught" /tmp/dx022_start_err.txt
+
+      - name: DX-020 - postinstall never fails npm install
+        working-directory: packages/node
+        run: |
+          rm -rf bin
+          code=0
+          node scripts/postinstall.js 2>/tmp/dx020_postinstall.txt || code=$?
+          test "$code" -eq 0
+          cat /tmp/dx020_postinstall.txt
+          rm -rf bin
+
+      - name: DX-020 - DiagnyxLogger resolves the bundled binary
+        run: |
+          mkdir -p packages/node/bin
+          cat > packages/node/bin/diagnyx <<'SCRIPT'
+          #!/bin/bash
+          echo "DX020_BUNDLED_BINARY_INVOKED"
+          exit 0
+          SCRIPT
+          chmod +x packages/node/bin/diagnyx
+          env -u DIAGNYX_PATH node -e '
+            const { DiagnyxLogger } = require("./packages/node");
+            process.exit(new DiagnyxLogger("ci").info("hello"));
+          ' > /tmp/dx020_bundled_out.txt
+          grep -q "DX020_BUNDLED_BINARY_INVOKED" /tmp/dx020_bundled_out.txt
+          rm -rf packages/node/bin

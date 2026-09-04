@@ -6,7 +6,9 @@ Thin Node.js client for the [Diagnyx](https://github.com/nachiketg/diagnyx) stru
 
 ## Prerequisites
 
-Install the Diagnyx CLI for your platform from the [releases page](https://github.com/nachiketg/diagnyx/releases), or build from source:
+None on win-x64, linux-x64, or osx-arm64 — a `postinstall` script downloads the matching `diagnyx` binary from GitHub Releases automatically, so `npm install diagnyx-node` is enough on its own. A failed or skipped download (offline install, unsupported platform, no release published yet) is only a warning; it never fails `npm install`.
+
+On any other platform, or if the download didn't happen, install the Diagnyx CLI from the [releases page](https://github.com/nachiketg/diagnyx/releases), or build from source, then point `DiagnyxLogger` at it via the `binaryPath` constructor argument or the `DIAGNYX_PATH` environment variable (see [Binary Discovery](#binary-discovery)):
 
 ```bash
 git clone https://github.com/nachiketg/diagnyx
@@ -40,7 +42,10 @@ Each call invokes `diagnyx log` and returns the exit code (`0` = success, `1` = 
 
 1. The `binaryPath` constructor argument (second parameter).
 2. The `DIAGNYX_PATH` environment variable.
-3. `diagnyx` (or `diagnyx.exe` on Windows) on the system PATH.
+3. The binary downloaded into this package's `bin/` folder by `postinstall` (win-x64, linux-x64, osx-arm64 only).
+4. `diagnyx` (or `diagnyx.exe` on Windows) on the system PATH.
+
+If none of these resolve to a binary, or the binary fails to run, `DiagnyxLogger` does not throw: it prints a warning to the console and the call returns `1`, so a missing or broken CLI never crashes the host application.
 
 ```javascript
 // Explicit path
@@ -50,8 +55,6 @@ const logger = new DiagnyxLogger('my-api', '/opt/diagnyx/diagnyx');
 // DIAGNYX_PATH=/opt/diagnyx/diagnyx
 const logger = new DiagnyxLogger('my-api');
 ```
-
-If the binary cannot be found or fails to run, `DiagnyxLogger` does not throw: it prints a warning to the console and the call returns `1`, so a missing or broken CLI never crashes the host application.
 
 ## API Reference
 
