@@ -9,6 +9,7 @@ obj/
 publish/
 artifacts/
 packages/dotnet/runtimes/
+packages/node/bin/
 
 # Node.js
 node_modules/

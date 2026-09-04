@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Thin Node.js client for the Diagnyx structured logging CLI",
   "main": "index.js",
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
   "engines": {
     "node": ">=18"
   },

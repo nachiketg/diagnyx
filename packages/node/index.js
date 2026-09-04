@@ -11,7 +11,7 @@ class DiagnyxLogger {
       throw new Error('source must be a non-empty string');
     }
     this._source = source;
-    this._binary = binaryPath || process.env.DIAGNYX_PATH || findInPath() || null;
+    this._binary = binaryPath || process.env.DIAGNYX_PATH || findBundled() || findInPath() || null;
   }
 
   debug(message, context) { return this._log('debug', message, context); }
@@ -59,6 +59,14 @@ class DiagnyxLogger {
 
 function warn(message) {
   console.warn(`diagnyx: warning: ${message.replace(/\.$/, '')}. Log entry dropped.`);
+}
+
+// scripts/postinstall.js downloads a matching binary into bin/ at install
+// time; this is where DiagnyxLogger looks for it.
+function findBundled() {
+  const binary = platform() === 'win32' ? 'diagnyx.exe' : 'diagnyx';
+  const candidate = join(__dirname, 'bin', binary);
+  return existsSync(candidate) ? candidate : null;
 }
 
 function findInPath() {
