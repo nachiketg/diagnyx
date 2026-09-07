@@ -44,6 +44,8 @@ Rules:
 - An all-zero `traceId` or `spanId` is invalid and ignored.
 - If `TRACEPARENT` is missing or fails validation, both fields are written as `null` — logging never fails because of a bad or absent trace context.
 
+The .NET and Node.js wrappers build on this same mechanism to support per-call trace context, without any changes to Diagnyx Core: each log call spawns a fresh CLI subprocess, so a wrapper can set `TRACEPARENT` just for that one invocation, sourced from an explicit `traceContext` argument or an idiomatic ambient-context mechanism (`Activity.Current` in .NET, `AsyncLocalStorage` in Node). See [packages/dotnet/README.md](../packages/dotnet/README.md#trace-context) and [packages/node/README.md](../packages/node/README.md#trace-context).
+
 ---
 
 ## Level Semantics

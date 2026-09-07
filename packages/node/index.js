@@ -4,6 +4,12 @@ const { spawnSync } = require('child_process');
 const { existsSync } = require('fs');
 const { platform } = require('os');
 const { delimiter, join } = require('path');
+const { AsyncLocalStorage } = require('async_hooks');
+
+// Ambient trace context: set via DiagnyxLogger.withTraceContext() and picked
+// up automatically by every log call made within that async scope (e.g. for
+// the lifetime of one request), without threading it through call sites.
+const traceContextStorage = new AsyncLocalStorage();
 
 class DiagnyxLogger {
   constructor(source, binaryPath) {
@@ -14,18 +20,24 @@ class DiagnyxLogger {
     this._binary = binaryPath || process.env.DIAGNYX_PATH || findBundled() || findInPath() || null;
   }
 
-  debug(message, context) { return this._log('debug', message, context); }
-  info(message, context)  { return this._log('info',  message, context); }
-  warn(message, context)  { return this._log('warn',  message, context); }
-  error(message, context) { return this._log('error', message, context); }
-  fatal(message, context) { return this._log('fatal', message, context); }
+  debug(message, context, traceContext) { return this._log('debug', message, context, traceContext); }
+  info(message, context, traceContext)  { return this._log('info',  message, context, traceContext); }
+  warn(message, context, traceContext)  { return this._log('warn',  message, context, traceContext); }
+  error(message, context, traceContext) { return this._log('error', message, context, traceContext); }
+  fatal(message, context, traceContext) { return this._log('fatal', message, context, traceContext); }
 
-  log(level, message, context) { return this._log(level, message, context); }
+  log(level, message, context, traceContext) { return this._log(level, message, context, traceContext); }
+
+  // Runs fn with { traceId, spanId } as the ambient trace context for every
+  // Diagnyx log call made during it (including in nested async calls).
+  static withTraceContext(traceContext, fn) {
+    return traceContextStorage.run(traceContext, fn);
+  }
 
   // Resolution and spawn failures are caught here and reported as a console
   // warning rather than thrown, so a missing or broken CLI never crashes
   // the host application.
-  _log(level, message, context) {
+  _log(level, message, context, traceContext) {
     if (!this._binary) {
       warn(
         'diagnyx binary not found. Install it from https://github.com/nachiketg/diagnyx/releases ' +
@@ -40,9 +52,15 @@ class DiagnyxLogger {
       args.push('--context', typeof context === 'string' ? context : JSON.stringify(context));
     }
 
+    const spawnEnv = { ...process.env };
+    const traceparent = toTraceparent(traceContext || traceContextStorage.getStore());
+    if (traceparent) {
+      spawnEnv.TRACEPARENT = traceparent;
+    }
+
     let result;
     try {
-      result = spawnSync(this._binary, args, { stdio: ['ignore', 'inherit', 'inherit'] });
+      result = spawnSync(this._binary, args, { stdio: ['ignore', 'inherit', 'inherit'], env: spawnEnv });
     } catch (err) {
       warn(`failed to invoke diagnyx CLI: ${err.message}`);
       return 1;
@@ -55,6 +73,17 @@ class DiagnyxLogger {
 
     return result.status ?? 1;
   }
+}
+
+// Builds a W3C traceparent header from { traceId, spanId }. Diagnyx Core
+// validates the format on read (see core/Logging/TraceContext.cs), so this
+// only needs to shape the string -- malformed input just yields a null
+// traceId/spanId on the log entry rather than a thrown error.
+function toTraceparent(traceContext) {
+  if (!traceContext || typeof traceContext !== 'object') return null;
+  const { traceId, spanId } = traceContext;
+  if (typeof traceId !== 'string' || typeof spanId !== 'string') return null;
+  return `00-${traceId}-${spanId}-01`;
 }
 
 function warn(message) {

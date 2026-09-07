@@ -17,7 +17,13 @@ internal sealed class CliRunner
     /// failures are caught and reported as a console warning rather than thrown,
     /// so a missing or broken CLI never crashes the host application.
     /// </summary>
-    internal int Run(string[] args)
+    /// <param name="args">CLI arguments.</param>
+    /// <param name="traceparent">
+    /// Optional W3C traceparent value to set as the TRACEPARENT environment
+    /// variable for this invocation only. Diagnyx Core validates and parses
+    /// it (see core/Logging/TraceContext.cs); an invalid value is ignored.
+    /// </param>
+    internal int Run(string[] args, string? traceparent = null)
     {
         string binaryPath;
         try
@@ -42,6 +48,9 @@ internal sealed class CliRunner
 
             foreach (var arg in args)
                 psi.ArgumentList.Add(arg);
+
+            if (traceparent is not null)
+                psi.EnvironmentVariables["TRACEPARENT"] = traceparent;
 
             using var proc = Process.Start(psi)
                 ?? throw new InvalidOperationException($"failed to start process: {binaryPath}");

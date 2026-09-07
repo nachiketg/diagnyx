@@ -69,14 +69,32 @@ const logger = new DiagnyxLogger('my-api');
 
 | Method | Level |
 |--------|-------|
-| `debug(message, context?)` | `debug` |
-| `info(message, context?)` | `info` |
-| `warn(message, context?)` | `warn` |
-| `error(message, context?)` | `error` |
-| `fatal(message, context?)` | `fatal` |
-| `log(level, message, context?)` | any |
+| `debug(message, context?, traceContext?)` | `debug` |
+| `info(message, context?, traceContext?)` | `info` |
+| `warn(message, context?, traceContext?)` | `warn` |
+| `error(message, context?, traceContext?)` | `error` |
+| `fatal(message, context?, traceContext?)` | `fatal` |
+| `log(level, message, context?, traceContext?)` | any |
 
 `message` is a string. `context` accepts any JSON-serializable object or a pre-serialized JSON object string. All methods return the CLI exit code (`0` = success, `1` = failure).
+
+## Trace Context
+
+Pass `{ traceId, spanId }` explicitly to correlate a specific entry with a trace:
+
+```javascript
+logger.info('processing order', { orderId: 'ord-9921' }, { traceId: '4bf92f3577b34da6a3ce929d0e0e4736', spanId: '00f067aa0ba902b7' });
+```
+
+Or set it as the ambient context for a whole async scope (e.g. one request) with `DiagnyxLogger.withTraceContext`, backed by Node's built-in `AsyncLocalStorage` — every log call made inside it, including through further `await`s, picks it up automatically:
+
+```javascript
+app.use((req, res, next) => {
+  DiagnyxLogger.withTraceContext({ traceId: req.traceId, spanId: req.spanId }, next);
+});
+```
+
+An explicit `traceContext` argument takes priority over the ambient one. An invalid or missing trace context results in `traceId`/`spanId` being `null` on the log entry, never an error.
 
 ## Configuration
 
