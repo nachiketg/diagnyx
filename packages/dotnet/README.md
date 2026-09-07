@@ -69,14 +69,33 @@ If the binary cannot be found or fails to run, `DiagnyxLogger` does not throw: i
 
 | Method | Level |
 |--------|-------|
-| `Debug(string message, object? context = null)` | `debug` |
-| `Info(string message, object? context = null)` | `info` |
-| `Warn(string message, object? context = null)` | `warn` |
-| `Error(string message, object? context = null)` | `error` |
-| `Fatal(string message, object? context = null)` | `fatal` |
-| `Log(string level, string message, object? context = null)` | any |
+| `Debug(string message, object? context = null, (string TraceId, string SpanId)? traceContext = null)` | `debug` |
+| `Info(string message, object? context = null, (string TraceId, string SpanId)? traceContext = null)` | `info` |
+| `Warn(string message, object? context = null, (string TraceId, string SpanId)? traceContext = null)` | `warn` |
+| `Error(string message, object? context = null, (string TraceId, string SpanId)? traceContext = null)` | `error` |
+| `Fatal(string message, object? context = null, (string TraceId, string SpanId)? traceContext = null)` | `fatal` |
+| `Log(string level, string message, object? context = null, (string TraceId, string SpanId)? traceContext = null)` | any |
 
 The `context` parameter accepts any object (serialized with `System.Text.Json`) or a pre-serialized JSON object string.
+
+## Trace Context
+
+Every log entry carries `traceId`/`spanId` when a trace is active, with no extra wiring:
+
+```csharp
+using System.Diagnostics;
+
+using var activity = new Activity("checkout").Start();
+logger.Info("processing order"); // traceId/spanId come from Activity.Current
+```
+
+`DiagnyxLogger` reads `Activity.Current` (the ambient, `AsyncLocal`-based trace context that .NET and OpenTelemetry instrumentation already populate) automatically. To correlate with a trace you're tracking yourself instead, pass it explicitly — it takes priority over `Activity.Current`:
+
+```csharp
+logger.Info("processing order", traceContext: ("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"));
+```
+
+An invalid or missing trace context results in `traceId`/`spanId` being `null`, never an error.
 
 ## Configuration
 
