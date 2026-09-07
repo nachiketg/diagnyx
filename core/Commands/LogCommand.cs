@@ -41,14 +41,16 @@ internal static class LogCommand
         var config = ConfigLoader.Load();
         source ??= config.Defaults?.Source ?? "app";
 
+        var (traceId, spanId) = TraceContext.TryGetActive();
+
         var entry = new LogEntry(
             Timestamp:   DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
             Level:       level.ToLowerInvariant(),
             Message:     message,
             Source:      source,
             ContextJson: validatedContext,
-            TraceId:     null,
-            SpanId:      null
+            TraceId:     traceId,
+            SpanId:      spanId
         );
 
         var sink = SinkFactory.Create(config);
