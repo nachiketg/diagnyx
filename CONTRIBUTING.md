@@ -43,6 +43,10 @@ Prefixes: `feat`, `fix`, `docs`, `test`, `chore`, `refactor`.
 - **Node.js wrapper**: ESLint + Prettier; run `npm run lint` before committing.
 - All public APIs must match the shape documented in `docs/SCHEMA.md` and the requirements doc.
 
+## Claude Code Settings
+
+`.claude/settings.json` holds the shared permission allowlist for using Claude Code in this repo (e.g. `gh release`, npm/NuGet registry lookups). It's checked in so all contributors get the same low-friction defaults. Personal, contributor-specific permissions belong in `.claude/settings.local.json` instead, which is gitignored.
+
 ## Reporting Issues
 
 Open a GitHub Issue with:
