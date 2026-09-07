@@ -22,8 +22,27 @@ This document defines the JSON log entry schema — the shared contract between 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `context` | `object` \| `null` | `null` | Arbitrary structured metadata as a JSON object. Values may be any JSON type. Not nested arrays of arrays. |
-| `traceId` | `string` \| `null` | `null` | Distributed trace ID, aligned with [OpenTelemetry W3C Trace Context](https://www.w3.org/TR/trace-context/). Reserved for Phase 2; populate now if available. |
-| `spanId` | `string` \| `null` | `null` | Span ID within the trace. Reserved for Phase 2. |
+| `traceId` | `string` \| `null` | `null` | Distributed trace ID, aligned with [OpenTelemetry W3C Trace Context](https://www.w3.org/TR/trace-context/). Populated automatically when an active trace context is available (see below). |
+| `spanId` | `string` \| `null` | `null` | Span ID within the trace. Populated automatically alongside `traceId`. |
+
+---
+
+## Automatic Trace Context Propagation
+
+Diagnyx Core populates `traceId`/`spanId` on its own, with no flag or wrapper change required: it reads the `TRACEPARENT` environment variable (the [W3C Trace Context](https://www.w3.org/TR/trace-context/#traceparent-header-field-values) propagation convention) from its own process environment.
+
+This works because the CLI always runs as a subprocess spawned by a wrapper (or invoked directly), and child processes inherit their parent's environment by default. If the host application sets `TRACEPARENT` before logging (as most OpenTelemetry SDKs do for outgoing propagation), Diagnyx Core picks it up automatically:
+
+```
+TRACEPARENT="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" myapp
+```
+
+Rules:
+
+- The header must match the `version-traceId-spanId-flags` shape exactly (lowercase hex, 2/32/16/2 characters).
+- Version `ff` is invalid and ignored.
+- An all-zero `traceId` or `spanId` is invalid and ignored.
+- If `TRACEPARENT` is missing or fails validation, both fields are written as `null` — logging never fails because of a bad or absent trace context.
 
 ---
 
