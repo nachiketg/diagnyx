@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Text;
@@ -10,10 +11,15 @@ namespace Diagnyx.Core.Sinks;
 /// <summary>
 /// Exports log entries to any OTel-compatible collector via OTLP/HTTP with
 /// JSON encoding, using the field mapping documented in docs/OTEL_MAPPING.md.
+/// Transient failures (connection errors, timeouts, and the HTTP status
+/// codes the OTLP spec calls out as retryable) are retried with exponential
+/// backoff up to <paramref name="maxRetries"/> times before giving up.
 /// </summary>
-internal sealed class OtlpSink(string endpoint) : ISink
+internal sealed class OtlpSink(string endpoint, int maxRetries = 3) : ISink
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan InitialBackoff = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(8);
 
     private static readonly string ScopeVersion =
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
@@ -27,14 +33,60 @@ internal sealed class OtlpSink(string endpoint) : ISink
         ["fatal"] = (21, "FATAL"),
     };
 
+    private static readonly HashSet<HttpStatusCode> RetryableStatusCodes =
+    [
+        HttpStatusCode.TooManyRequests,  // 429
+        HttpStatusCode.BadGateway,       // 502
+        HttpStatusCode.ServiceUnavailable, // 503
+        HttpStatusCode.GatewayTimeout,   // 504
+    ];
+
     private readonly string _logsUrl = BuildLogsUrl(endpoint);
+    private readonly int _maxRetries = Math.Max(0, maxRetries);
 
     public int Write(LogEntry entry)
     {
+        string payload;
         try
         {
-            var payload = BuildPayload(entry);
+            payload = BuildPayload(entry);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"error: OTLP export failed: {ex.Message}");
+            return 1;
+        }
 
+        var maxAttempts = _maxRetries + 1;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            var (success, retryable, error) = TrySend(payload);
+            if (success)
+                return 0;
+
+            var isLastAttempt = attempt == maxAttempts;
+            if (!retryable || isLastAttempt)
+            {
+                Console.Error.WriteLine(
+                    $"error: OTLP export failed after {attempt} attempt{(attempt == 1 ? "" : "s")}: {error}");
+                return 1;
+            }
+
+            var delay = ComputeBackoff(attempt);
+            Console.Error.WriteLine(
+                $"warning: OTLP export attempt {attempt}/{maxAttempts} failed ({error}), retrying in {(int)delay.TotalMilliseconds}ms...");
+            Thread.Sleep(delay);
+        }
+
+        // Unreachable: the loop above always returns on its last iteration.
+        return 1;
+    }
+
+    private (bool Success, bool Retryable, string Error) TrySend(string payload)
+    {
+        try
+        {
             using var client = new HttpClient { Timeout = Timeout };
             using var request = new HttpRequestMessage(HttpMethod.Post, _logsUrl)
             {
@@ -42,22 +94,26 @@ internal sealed class OtlpSink(string endpoint) : ISink
             };
             using var response = client.Send(request);
 
-            if (!response.IsSuccessStatusCode)
-            {
-                var body = new StreamReader(response.Content.ReadAsStream()).ReadToEnd();
-                Console.Error.WriteLine(
-                    $"error: OTLP export failed: {(int)response.StatusCode} {response.ReasonPhrase}" +
-                    (string.IsNullOrWhiteSpace(body) ? "" : $" -- {body}"));
-                return 1;
-            }
+            if (response.IsSuccessStatusCode)
+                return (true, false, "");
 
-            return 0;
+            var body = new StreamReader(response.Content.ReadAsStream()).ReadToEnd();
+            var message = $"{(int)response.StatusCode} {response.ReasonPhrase}" +
+                (string.IsNullOrWhiteSpace(body) ? "" : $" -- {body}");
+            return (false, RetryableStatusCodes.Contains(response.StatusCode), message);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"error: OTLP export failed: {ex.Message}");
-            return 1;
+            // Connection failures, DNS errors, and timeouts are all transient
+            // by nature -- always worth a retry.
+            return (false, true, ex.Message);
         }
+    }
+
+    private static TimeSpan ComputeBackoff(int attempt)
+    {
+        var ms = InitialBackoff.TotalMilliseconds * Math.Pow(2, attempt - 1);
+        return TimeSpan.FromMilliseconds(Math.Min(ms, MaxBackoff.TotalMilliseconds));
     }
 
     private static string BuildLogsUrl(string endpoint)

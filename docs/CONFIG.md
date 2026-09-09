@@ -39,7 +39,8 @@ Run `diagnyx init` to scaffold a default config file in the current directory.
       "connectionString": "Server=localhost;Database=diagnyx;User Id=user;Password=pass;TrustServerCertificate=True"
     },
     "otlp": {
-      "endpoint": "http://localhost:4318"
+      "endpoint": "http://localhost:4318",
+      "maxRetries": 3
     }
   },
   "defaults": {
@@ -143,11 +144,20 @@ The `diagnyx_logs` table is created automatically on first run. `timestamp` is s
 
 Only read when `sink.type` is `"otlp"`.
 
-| Key | Type | Required | Description |
-|-----|------|----------|-------------|
-| `endpoint` | `string` | Yes | Base URL of an OTel-compatible collector, e.g. `http://localhost:4318`. `/v1/logs` is appended automatically unless the URL already ends with it. |
+| Key | Type | Required | Default | Description |
+|-----|------|----------|---------|-------------|
+| `endpoint` | `string` | Yes | — | Base URL of an OTel-compatible collector, e.g. `http://localhost:4318`. `/v1/logs` is appended automatically unless the URL already ends with it. |
+| `maxRetries` | `number` | No | `3` | Number of retries after an initial failed export, so the default allows up to 4 attempts total. Negative values are treated as `0`. |
 
-Each `diagnyx log` call sends one `POST` request with an OTLP/HTTP JSON body (`Content-Type: application/json`) containing exactly one `LogRecord`, using the field mapping documented in [`docs/OTEL_MAPPING.md`](OTEL_MAPPING.md). A 10-second request timeout applies. If the request fails (connection error, timeout, or a non-2xx response), the error is printed to stderr and the command exits `1` — the log entry is not retried or buffered.
+Each `diagnyx log` call sends one `POST` request with an OTLP/HTTP JSON body (`Content-Type: application/json`) containing exactly one `LogRecord`, using the field mapping documented in [`docs/OTEL_MAPPING.md`](OTEL_MAPPING.md). A 10-second request timeout applies per attempt.
+
+**Retry and backoff:** a failed export is retried with exponential backoff (500ms, 1s, 2s, ..., capped at 8s between attempts) only when the failure looks transient:
+
+- Connection errors, DNS failures, and timeouts — always retried.
+- HTTP `429`, `502`, `503`, `504` — retried.
+- Any other non-2xx response (e.g. `400`, `401`, `404`) — not retried; the request itself is presumed unfixable by retrying, so the command fails immediately.
+
+Each retry prints a `warning:` line to stderr before sleeping. Once `maxRetries` is exhausted (or a non-retryable failure occurs), a final `error:` line is printed and the command exits `1` — the log entry is never silently discarded, but it is also not persisted or re-queued after the process exits.
 
 ---
 
@@ -250,7 +260,8 @@ The value used for the `source` field when `--source` is not passed to `diagnyx 
   "sink": {
     "type": "otlp",
     "otlp": {
-      "endpoint": "http://localhost:4318"
+      "endpoint": "http://localhost:4318",
+      "maxRetries": 3
     }
   }
 }

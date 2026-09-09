@@ -63,11 +63,11 @@ internal static class SinkFactory
 
     private static OtlpSink CreateOtlpSink(DiagnyxConfig config)
     {
-        var endpoint = config.Sink.Otlp?.Endpoint;
-        if (string.IsNullOrWhiteSpace(endpoint))
+        var otlp = config.Sink.Otlp;
+        if (string.IsNullOrWhiteSpace(otlp?.Endpoint))
             throw new InvalidOperationException(
                 "sink.otlp.endpoint is required when sink.type is 'otlp'. " +
                 "See docs/CONFIG.md.");
-        return new OtlpSink(endpoint);
+        return new OtlpSink(otlp.Endpoint, otlp.MaxRetries);
     }
 }

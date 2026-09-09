@@ -35,6 +35,14 @@ internal sealed class RdbmsSinkConfig
 internal sealed class OtlpSinkConfig
 {
     public string Endpoint { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Number of retries after an initial failed export attempt (so 3 means
+    /// up to 4 attempts total), with exponential backoff between attempts.
+    /// Only failures classified as transient are retried -- see
+    /// OtlpSink.IsRetryableStatus.
+    /// </summary>
+    public int MaxRetries { get; set; } = 3;
 }
 
 internal sealed class DefaultsConfig
