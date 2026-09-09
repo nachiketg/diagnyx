@@ -445,3 +445,83 @@ jobs:
           ' > /tmp/dx020_bundled_out.txt
           grep -q "DX020_BUNDLED_BINARY_INVOKED" /tmp/dx020_bundled_out.txt
           rm -rf packages/node/bin
+
+      # ── DX-030/DX-031: OTLP sink, configurable via config file only ─────────
+
+      - name: DX-030 - start mock OTLP/HTTP collector
+        run: |
+          mkdir -p /tmp/dx030
+          cat > /tmp/dx030/mock_collector.py <<'PY'
+          import http.server
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  length = int(self.headers.get('Content-Length', 0))
+                  body = self.rfile.read(length)
+                  with open('/tmp/dx030/received.json', 'wb') as f:
+                      f.write(body)
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(b'{}')
+
+              def log_message(self, *args):
+                  pass
+
+          http.server.HTTPServer(('127.0.0.1', 4318), Handler).serve_forever()
+          PY
+          nohup python3 /tmp/dx030/mock_collector.py > /tmp/dx030/collector.log 2>&1 &
+          echo $! > /tmp/dx030/collector.pid
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null -X POST -d '{}' http://127.0.0.1:4318/v1/logs && break
+            sleep 0.25
+          done
+
+      - name: DX-030 - OTLP sink exports a valid LogRecord
+        run: |
+          printf '{"sink":{"type":"otlp","otlp":{"endpoint":"http://127.0.0.1:4318"}},"defaults":{"source":"otlp-ci"}}' \
+            > /tmp/dx030/diagnyx.config.json
+          rm -f /tmp/dx030/received.json
+          DIAGNYX_CONFIG=/tmp/dx030/diagnyx.config.json ./publish/diagnyx log \
+            --level error --message "otlp ci test" --context '{"k":"v"}'
+          test -s /tmp/dx030/received.json
+          jq -e '.resourceLogs[0].resource.attributes[] | select(.key=="service.name") | .value.stringValue == "otlp-ci"' /tmp/dx030/received.json
+          jq -e '.resourceLogs[0].scopeLogs[0].logRecords[0].severityText == "ERROR"' /tmp/dx030/received.json
+          jq -e '.resourceLogs[0].scopeLogs[0].logRecords[0].severityNumber == 17' /tmp/dx030/received.json
+          jq -e '.resourceLogs[0].scopeLogs[0].logRecords[0].body.stringValue == "otlp ci test"' /tmp/dx030/received.json
+          jq -e '.resourceLogs[0].scopeLogs[0].logRecords[0].attributes[] | select(.key=="k") | .value.stringValue == "v"' /tmp/dx030/received.json
+
+      - name: DX-030 - OTLP sink surfaces collector-unreachable errors and exits 1
+        run: |
+          printf '{"sink":{"type":"otlp","otlp":{"endpoint":"http://127.0.0.1:9"}}}' \
+            > /tmp/dx030/diagnyx-unreachable.config.json
+          DIAGNYX_CONFIG=/tmp/dx030/diagnyx-unreachable.config.json ./publish/diagnyx log \
+            --level info --message "unreachable" 2>/tmp/dx030/unreachable_err.txt && exit 1 || true
+          grep -qi "OTLP export failed" /tmp/dx030/unreachable_err.txt
+
+      - name: DX-031 - missing sink.otlp.endpoint is a clear config error
+        run: |
+          printf '{"sink":{"type":"otlp"}}' > /tmp/dx030/diagnyx-missing.config.json
+          DIAGNYX_CONFIG=/tmp/dx030/diagnyx-missing.config.json ./publish/diagnyx log \
+            --level info --message "test" 2>/tmp/dx030/missing_err.txt && exit 1 || true
+          grep -qi "sink.otlp.endpoint is required" /tmp/dx030/missing_err.txt
+
+      - name: DX-031 - switching sink.type between otlp and file requires config changes only
+        run: |
+          # Same published binary as every other step in this job -- no rebuild,
+          # only the config file changes, proving the sink switch is config-only.
+          rm -f /tmp/dx030/received.json
+          mkdir -p /tmp/dx031
+          DIAGNYX_CONFIG=/tmp/dx030/diagnyx.config.json ./publish/diagnyx log \
+            --level info --message "dx-031 otlp leg"
+          test -s /tmp/dx030/received.json
+
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx031/switched.log"}}}' \
+            > /tmp/dx031/diagnyx.config.json
+          DIAGNYX_CONFIG=/tmp/dx031/diagnyx.config.json ./publish/diagnyx log \
+            --level info --message "dx-031 file leg"
+          grep -q '"message":"dx-031 file leg"' /tmp/dx031/switched.log
+
+      - name: DX-030/DX-031 - stop mock OTLP collector
+        if: always()
+        run: kill "$(cat /tmp/dx030/collector.pid)" 2>/dev/null || true
