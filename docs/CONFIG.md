@@ -273,6 +273,19 @@ To switch from the file sink to SQLite — for example to gain SQL queryability 
  }
 ```
 
+The same applies to `otlp`: point an existing app at a collector, or move off it, with a config change alone.
+
+```diff
+ {
+   "sink": {
+-    "type": "file",
+-    "file": { "path": "./logs/app.log" }
++    "type": "otlp",
++    "otlp": { "endpoint": "http://localhost:4318" }
+   }
+ }
+```
+
 ---
 
 ## Environment Variable Override
