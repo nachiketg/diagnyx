@@ -83,9 +83,15 @@ Diagnyx is configured via a `diagnyx.config.json` file in your project root or `
                  +----------------------+   |
         ^                    ^              |    +-----------------------------+
         |                    |              +--->|  RDBMS sink (optional)      |
-  diagnyx-dotnet        diagnyx-node             |  SQLite / Postgres /        |
-  (NuGet wrapper)      (npm wrapper)             |  MySQL / MSSQL              |
-                                                 +-----------------------------+
+  diagnyx-dotnet        diagnyx-node        |    |  SQLite / Postgres /        |
+  (NuGet wrapper)      (npm wrapper)        |    |  MySQL / MSSQL              |
+                                             |    +-----------------------------+
+                                             |
+                                             |    +-----------------------------+
+                                             +--->|  OTLP sink (optional)       |
+                                                  |  any OTel-compatible        |
+                                                  |  collector, via HTTP/JSON   |
+                                                  +-----------------------------+
 ```
 
 The core CLI is a single cross-platform binary (Native AOT, no .NET runtime required). Language wrappers are thin shims that invoke the CLI — no logic lives in the wrappers.

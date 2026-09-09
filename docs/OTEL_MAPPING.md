@@ -2,7 +2,7 @@
 
 This document maps the [Diagnyx log entry schema](SCHEMA.md) onto the [OpenTelemetry Logs Data Model](https://opentelemetry.io/docs/specs/otel/logs/data-model/), so logs can be exported as OTLP without renaming or restructuring fields.
 
-This is a mapping specification, not an exporter — there is no `diagnyx export otlp` command yet (see [Roadmap](../README.md#roadmap), Phase 2). [scripts/verify-otel-mapping.js](../scripts/verify-otel-mapping.js) implements the mapping below to convert a sample entry and validate the result structurally against the data model, so the mapping is checked by running code rather than by reading prose alone.
+This mapping is implemented twice: once in [`scripts/verify-otel-mapping.js`](../scripts/verify-otel-mapping.js), which converts a sample entry and validates the result structurally against the data model as a documentation check; and once in [`core/Sinks/OtlpSink.cs`](../core/Sinks/OtlpSink.cs), the real `otlp` sink that exports every `diagnyx log` entry live over OTLP/HTTP when `sink.type` is set to `"otlp"` (see [`docs/CONFIG.md`](CONFIG.md#sinkotlp)). Both follow the exact rules below, so the mapping is checked by running code rather than by reading prose alone.
 
 ---
 

@@ -14,6 +14,7 @@ internal sealed class SinkConfig
     public RdbmsSinkConfig? Postgres { get; set; }
     public RdbmsSinkConfig? Mysql { get; set; }
     public RdbmsSinkConfig? Mssql { get; set; }
+    public OtlpSinkConfig? Otlp { get; set; }
 }
 
 internal sealed class FileSinkConfig
@@ -29,6 +30,11 @@ internal sealed class SqliteSinkConfig
 internal sealed class RdbmsSinkConfig
 {
     public string ConnectionString { get; set; } = string.Empty;
+}
+
+internal sealed class OtlpSinkConfig
+{
+    public string Endpoint { get; set; } = string.Empty;
 }
 
 internal sealed class DefaultsConfig
