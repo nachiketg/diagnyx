@@ -1,0 +1,65 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "payment-service"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "diagnyx",
+            "version": "0.1.0"
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "1756125296789000000",
+              "observedTimeUnixNano": "1756125296789000000",
+              "severityNumber": 17,
+              "severityText": "ERROR",
+              "body": {
+                "stringValue": "Payment processing failed"
+              },
+              "attributes": [
+                {
+                  "key": "orderId",
+                  "value": {
+                    "stringValue": "ord-9921"
+                  }
+                },
+                {
+                  "key": "amount",
+                  "value": {
+                    "doubleValue": 49.99
+                  }
+                },
+                {
+                  "key": "currency",
+                  "value": {
+                    "stringValue": "USD"
+                  }
+                },
+                {
+                  "key": "retryCount",
+                  "value": {
+                    "intValue": "3"
+                  }
+                }
+              ],
+              "droppedAttributesCount": 0,
+              "flags": 0,
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "00f067aa0ba902b7"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
