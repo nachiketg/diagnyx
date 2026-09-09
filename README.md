@@ -17,7 +17,8 @@ diagnyx/
 ├── docs/
 │   ├── SCHEMA.md           # Log entry JSON schema (the contract)
 │   ├── CONFIG.md           # Config file format reference
-│   └── EXTENDING_SINKS.md  # How to add a new sink engine
+│   ├── EXTENDING_SINKS.md  # How to add a new sink engine
+│   └── OTEL_MAPPING.md     # Field mapping onto the OpenTelemetry Logs Data Model
 ├── CONTRIBUTING.md
 └── LICENSE
 ```
@@ -60,7 +61,7 @@ No separate CLI install needed on win-x64, linux-x64, or osx-arm64 — a `postin
 
 ## Log Format
 
-All log entries are written as [JSON Lines](https://jsonlines.org/) (one JSON object per line). See [docs/SCHEMA.md](docs/SCHEMA.md) for the full field reference.
+All log entries are written as [JSON Lines](https://jsonlines.org/) (one JSON object per line). See [docs/SCHEMA.md](docs/SCHEMA.md) for the full field reference, and [docs/OTEL_MAPPING.md](docs/OTEL_MAPPING.md) for how these fields map onto the OpenTelemetry Logs Data Model.
 
 Example entry:
 
