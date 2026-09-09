@@ -37,6 +37,9 @@ Run `diagnyx init` to scaffold a default config file in the current directory.
     },
     "mssql": {
       "connectionString": "Server=localhost;Database=diagnyx;User Id=user;Password=pass;TrustServerCertificate=True"
+    },
+    "otlp": {
+      "endpoint": "http://localhost:4318"
     }
   },
   "defaults": {
@@ -64,6 +67,7 @@ Selects the active sink. Exactly one sink is active at a time.
 | `"postgres"` | Write rows to a PostgreSQL database. |
 | `"mysql"` | Write rows to a MySQL database. |
 | `"mssql"` | Write rows to a Microsoft SQL Server database. |
+| `"otlp"` | Export to any OTel-compatible collector via OTLP/HTTP (JSON). |
 
 ---
 
@@ -130,6 +134,20 @@ Only read when `sink.type` is `"mssql"`.
 | `connectionString` | `string` | Yes | A standard [Microsoft.Data.SqlClient connection string](https://learn.microsoft.com/en-us/dotnet/api/microsoft.data.sqlclient.sqlconnection.connectionstring). |
 
 The `diagnyx_logs` table is created automatically on first run. `timestamp` is stored as `NVARCHAR(50)` (ISO 8601 string) for consistent TEXT storage across all engines. Include `TrustServerCertificate=True` in the connection string when connecting to a local or self-signed instance.
+
+---
+
+### `sink.otlp`
+
+**Status: implemented (v1)**
+
+Only read when `sink.type` is `"otlp"`.
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `endpoint` | `string` | Yes | Base URL of an OTel-compatible collector, e.g. `http://localhost:4318`. `/v1/logs` is appended automatically unless the URL already ends with it. |
+
+Each `diagnyx log` call sends one `POST` request with an OTLP/HTTP JSON body (`Content-Type: application/json`) containing exactly one `LogRecord`, using the field mapping documented in [`docs/OTEL_MAPPING.md`](OTEL_MAPPING.md). A 10-second request timeout applies. If the request fails (connection error, timeout, or a non-2xx response), the error is printed to stderr and the command exits `1` — the log entry is not retried or buffered.
 
 ---
 
@@ -220,6 +238,19 @@ The value used for the `source` field when `--source` is not passed to `diagnyx 
     "type": "mssql",
     "mssql": {
       "connectionString": "Server=localhost;Database=diagnyx;User Id=diagnyx_user;Password=s3cr3t;TrustServerCertificate=True"
+    }
+  }
+}
+```
+
+### OTLP (any OTel-compatible collector)
+
+```json
+{
+  "sink": {
+    "type": "otlp",
+    "otlp": {
+      "endpoint": "http://localhost:4318"
     }
   }
 }

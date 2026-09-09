@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Diagnyx.Core.Config;
 using Diagnyx.Core.Logging;
@@ -44,7 +45,7 @@ internal static class LogCommand
         var (traceId, spanId) = TraceContext.TryGetActive();
 
         var entry = new LogEntry(
-            Timestamp:   DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+            Timestamp:   DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
             Level:       level.ToLowerInvariant(),
             Message:     message,
             Source:      source,

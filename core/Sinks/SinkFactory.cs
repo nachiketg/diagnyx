@@ -13,8 +13,9 @@ internal static class SinkFactory
             "postgres" => CreatePostgresSink(config),
             "mysql"    => CreateMysqlSink(config),
             "mssql"    => CreateMssqlSink(config),
+            "otlp"     => CreateOtlpSink(config),
             var t      => throw new InvalidOperationException(
-                $"Unknown sink type '{t}'. Valid values: file, sqlite, postgres, mysql, mssql.")
+                $"Unknown sink type '{t}'. Valid values: file, sqlite, postgres, mysql, mssql, otlp.")
         };
     }
 
@@ -58,5 +59,15 @@ internal static class SinkFactory
                 "sink.mssql.connectionString is required when sink.type is 'mssql'. " +
                 "See docs/CONFIG.md.");
         return new MssqlSink(cs);
+    }
+
+    private static OtlpSink CreateOtlpSink(DiagnyxConfig config)
+    {
+        var endpoint = config.Sink.Otlp?.Endpoint;
+        if (string.IsNullOrWhiteSpace(endpoint))
+            throw new InvalidOperationException(
+                "sink.otlp.endpoint is required when sink.type is 'otlp'. " +
+                "See docs/CONFIG.md.");
+        return new OtlpSink(endpoint);
     }
 }

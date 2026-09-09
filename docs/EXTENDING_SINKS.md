@@ -146,3 +146,5 @@ internal sealed class HttpSink(string endpoint) : ISink
 ```
 
 Then follow steps 3–5 above to register it.
+
+See [`core/Sinks/OtlpSink.cs`](../core/Sinks/OtlpSink.cs) for a real example: it exports over OTLP/HTTP using the field mapping in [`docs/OTEL_MAPPING.md`](OTEL_MAPPING.md).
