@@ -525,3 +525,106 @@ jobs:
       - name: DX-030/DX-031 - stop mock OTLP collector
         if: always()
         run: kill "$(cat /tmp/dx030/collector.pid)" 2>/dev/null || true
+
+      # ── DX-032: OTLP export retry with exponential backoff ───────────────────
+
+      - name: DX-032 - write flaky OTLP collector fixture
+        run: |
+          mkdir -p /tmp/dx032
+          cat > /tmp/dx032/flaky_collector.py <<'PY'
+          import http.server
+          import sys
+
+          port = int(sys.argv[1])
+          fail_count = int(sys.argv[2])
+          fail_status = int(sys.argv[3])
+          count_file = sys.argv[4]
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              request_count = 0
+
+              def do_GET(self):
+                  # Health check only -- does not count toward fail_count.
+                  self.send_response(200)
+                  self.end_headers()
+
+              def do_POST(self):
+                  Handler.request_count += 1
+                  with open(count_file, 'w') as f:
+                      f.write(str(Handler.request_count))
+
+                  length = int(self.headers.get('Content-Length', 0))
+                  self.rfile.read(length)
+
+                  if Handler.request_count <= fail_count:
+                      self.send_response(fail_status)
+                  else:
+                      self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(b'{}')
+
+              def log_message(self, *args):
+                  pass
+
+          http.server.HTTPServer(('127.0.0.1', port), Handler).serve_forever()
+          PY
+
+      - name: DX-032 - retry succeeds after transient failures
+        run: |
+          rm -f /tmp/dx032/count.txt
+          python3 /tmp/dx032/flaky_collector.py 4330 2 503 /tmp/dx032/count.txt &
+          echo $! > /tmp/dx032/collector_a.pid
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null http://127.0.0.1:4330/ && break
+            sleep 0.25
+          done
+
+          printf '{"sink":{"type":"otlp","otlp":{"endpoint":"http://127.0.0.1:4330","maxRetries":3}}}' \
+            > /tmp/dx032/retry-success.config.json
+          DIAGNYX_CONFIG=/tmp/dx032/retry-success.config.json ./publish/diagnyx log \
+            --level info --message "dx-032 retry success" 2>/tmp/dx032/retry_success_err.txt
+          kill "$(cat /tmp/dx032/collector_a.pid)" 2>/dev/null || true
+
+          test "$(cat /tmp/dx032/count.txt)" -eq 3
+          grep -q "warning: OTLP export attempt 1/4" /tmp/dx032/retry_success_err.txt
+          grep -q "warning: OTLP export attempt 2/4" /tmp/dx032/retry_success_err.txt
+          ! grep -qi "^error:" /tmp/dx032/retry_success_err.txt
+
+      - name: DX-032 - retries are exhausted and failure is logged to stderr
+        run: |
+          rm -f /tmp/dx032/count.txt
+          python3 /tmp/dx032/flaky_collector.py 4331 999 503 /tmp/dx032/count.txt &
+          echo $! > /tmp/dx032/collector_b.pid
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null http://127.0.0.1:4331/ && break
+            sleep 0.25
+          done
+
+          printf '{"sink":{"type":"otlp","otlp":{"endpoint":"http://127.0.0.1:4331","maxRetries":2}}}' \
+            > /tmp/dx032/exhausted.config.json
+          DIAGNYX_CONFIG=/tmp/dx032/exhausted.config.json ./publish/diagnyx log \
+            --level info --message "dx-032 exhausted" 2>/tmp/dx032/exhausted_err.txt && exit 1 || true
+          kill "$(cat /tmp/dx032/collector_b.pid)" 2>/dev/null || true
+
+          test "$(cat /tmp/dx032/count.txt)" -eq 3
+          grep -q "error: OTLP export failed after 3 attempts" /tmp/dx032/exhausted_err.txt
+
+      - name: DX-032 - non-retryable failures are not retried
+        run: |
+          rm -f /tmp/dx032/count.txt
+          python3 /tmp/dx032/flaky_collector.py 4332 999 400 /tmp/dx032/count.txt &
+          echo $! > /tmp/dx032/collector_c.pid
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null http://127.0.0.1:4332/ && break
+            sleep 0.25
+          done
+
+          printf '{"sink":{"type":"otlp","otlp":{"endpoint":"http://127.0.0.1:4332","maxRetries":3}}}' \
+            > /tmp/dx032/nonretryable.config.json
+          DIAGNYX_CONFIG=/tmp/dx032/nonretryable.config.json ./publish/diagnyx log \
+            --level info --message "dx-032 non-retryable" 2>/tmp/dx032/nonretryable_err.txt && exit 1 || true
+          kill "$(cat /tmp/dx032/collector_c.pid)" 2>/dev/null || true
+
+          test "$(cat /tmp/dx032/count.txt)" -eq 1
+          grep -q "error: OTLP export failed after 1 attempt:" /tmp/dx032/nonretryable_err.txt
