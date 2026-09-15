@@ -61,6 +61,19 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      grafana:
+        image: grafana/grafana:11.1.0
+        env:
+          GF_SECURITY_ADMIN_USER: admin
+          GF_SECURITY_ADMIN_PASSWORD: admin
+        ports:
+          - 3000:3000
+        options: >-
+          --health-cmd "wget -q --spider http://localhost:3000/api/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -674,3 +687,42 @@ jobs:
           echo "$RESULT" | jq -e '.context.k == "v"'
           echo "$RESULT" | jq -e '.traceId == "4bf92f3577b34da6a3ce929d0e0e4736"'
           echo "$RESULT" | jq -e '.spanId == "00f067aa0ba902b7"'
+
+      # ── DX-034: starter Grafana dashboard ────────────────────────────────────
+
+      - name: DX-034 - wait for Grafana readiness
+        run: |
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null http://localhost:3000/api/health && break
+            sleep 0.5
+          done
+
+      - name: DX-034 - register Loki data source in Grafana
+        run: |
+          RESPONSE=$(curl -sf -u admin:admin -X POST http://localhost:3000/api/datasources \
+            -H "Content-Type: application/json" \
+            -d '{"name":"Loki","type":"loki","url":"http://localhost:3100","access":"proxy","isDefault":true}')
+          echo "$RESPONSE"
+          echo "$RESPONSE" | jq -e '.datasource.uid != null and .datasource.uid != ""'
+
+      - name: DX-034 - dashboard JSON imports cleanly into Grafana
+        run: |
+          jq -n --slurpfile dash dashboards/diagnyx-logs.json '{dashboard: $dash[0], overwrite: true}' \
+            > /tmp/dx034-import.json
+          RESPONSE=$(curl -sf -u admin:admin -X POST http://localhost:3000/api/dashboards/db \
+            -H "Content-Type: application/json" \
+            -d @/tmp/dx034-import.json)
+          echo "$RESPONSE"
+          echo "$RESPONSE" | jq -e '.status == "success"'
+          echo "$RESPONSE" | jq -e '.uid == "diagnyx-logs"'
+
+      - name: DX-034 - imported dashboard has the expected panels and data source variable
+        run: |
+          curl -sf -u admin:admin http://localhost:3000/api/dashboards/uid/diagnyx-logs \
+            > /tmp/dx034-fetched.json
+          jq -e '.dashboard.templating.list[] | select(.name=="datasource") | .query == "loki"' \
+            /tmp/dx034-fetched.json
+          jq -e '.dashboard.panels | length == 3' /tmp/dx034-fetched.json
+          jq -e '.dashboard.panels[] | select(.title=="Log Volume by Level")' /tmp/dx034-fetched.json
+          jq -e '.dashboard.panels[] | select(.title=="Log Volume by Source")' /tmp/dx034-fetched.json
+          jq -e '.dashboard.panels[] | select(.title=="Recent Logs")' /tmp/dx034-fetched.json
