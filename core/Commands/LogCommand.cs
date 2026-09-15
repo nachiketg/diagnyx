@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Diagnyx.Core.Config;
 using Diagnyx.Core.Logging;
+using Diagnyx.Core.Metrics;
 using Diagnyx.Core.Sinks;
 
 namespace Diagnyx.Core.Commands;
@@ -54,8 +55,25 @@ internal static class LogCommand
             SpanId:      spanId
         );
 
+        if (config.Metrics is { Enabled: true })
+            RecordMetric(config.Metrics.Path, entry.Level, entry.Source);
+
         var sink = SinkFactory.Create(config);
         return sink.Write(entry);
+    }
+
+    // Metrics tracking is a side concern: a counter-store failure must never
+    // stop the log entry itself from reaching its sink.
+    private static void RecordMetric(string dbPath, string level, string source)
+    {
+        try
+        {
+            MetricsStore.Increment(ConfigLoader.ExpandPath(dbPath), level, source);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"warning: failed to record metrics: {ex.Message}");
+        }
     }
 
     private static bool TryValidateContext(string json, out string? normalized, out string? error)
