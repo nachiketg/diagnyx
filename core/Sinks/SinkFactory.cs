@@ -14,8 +14,9 @@ internal static class SinkFactory
             "mysql"    => CreateMysqlSink(config),
             "mssql"    => CreateMssqlSink(config),
             "otlp"     => CreateOtlpSink(config),
+            "loki"     => CreateLokiSink(config),
             var t      => throw new InvalidOperationException(
-                $"Unknown sink type '{t}'. Valid values: file, sqlite, postgres, mysql, mssql, otlp.")
+                $"Unknown sink type '{t}'. Valid values: file, sqlite, postgres, mysql, mssql, otlp, loki.")
         };
     }
 
@@ -69,5 +70,15 @@ internal static class SinkFactory
                 "sink.otlp.endpoint is required when sink.type is 'otlp'. " +
                 "See docs/CONFIG.md.");
         return new OtlpSink(otlp.Endpoint, otlp.MaxRetries);
+    }
+
+    private static LokiSink CreateLokiSink(DiagnyxConfig config)
+    {
+        var endpoint = config.Sink.Loki?.Endpoint;
+        if (string.IsNullOrWhiteSpace(endpoint))
+            throw new InvalidOperationException(
+                "sink.loki.endpoint is required when sink.type is 'loki'. " +
+                "See docs/CONFIG.md.");
+        return new LokiSink(endpoint);
     }
 }

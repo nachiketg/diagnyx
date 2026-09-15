@@ -130,7 +130,7 @@ internal sealed class OtlpSink(string endpoint, int maxRetries = 3) : ISink
         using (var writer = new Utf8JsonWriter(ms))
         {
             var (severityNumber, severityText) = Severity[entry.Level];
-            var timeUnixNano = ToUnixNano(entry.Timestamp);
+            var timeUnixNano = TimestampUtil.ToUnixNanoseconds(entry.Timestamp).ToString(CultureInfo.InvariantCulture);
 
             writer.WriteStartObject();
             writer.WritePropertyName("resourceLogs");
@@ -261,12 +261,5 @@ internal sealed class OtlpSink(string endpoint, int maxRetries = 3) : ISink
                 writer.WriteString("stringValue", "");
                 break;
         }
-    }
-
-    private static string ToUnixNano(string isoTimestamp)
-    {
-        var offset = DateTimeOffset.ParseExact(
-            isoTimestamp, "yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
-        return (offset.ToUnixTimeMilliseconds() * 1_000_000L).ToString(CultureInfo.InvariantCulture);
     }
 }

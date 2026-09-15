@@ -51,6 +51,16 @@ jobs:
           --health-timeout 10s
           --health-retries 15
 
+      loki:
+        image: grafana/loki:3.0.0
+        ports:
+          - 3100:3100
+        options: >-
+          --health-cmd "wget -q --spider http://localhost:3100/ready || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -628,3 +638,39 @@ jobs:
 
           test "$(cat /tmp/dx032/count.txt)" -eq 1
           grep -q "error: OTLP export failed after 1 attempt:" /tmp/dx032/nonretryable_err.txt
+
+      # ── DX-033: Loki push exporter sink ──────────────────────────────────────
+
+      - name: DX-033 - wait for Loki readiness
+        run: |
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null http://localhost:3100/ready && break
+            sleep 0.5
+          done
+
+      - name: DX-033 - Loki sink pushes entries in the expected label/line format
+        run: |
+          printf '{"sink":{"type":"loki","loki":{"endpoint":"http://localhost:3100"}}}' \
+            > /tmp/dx033.json
+          TRACEPARENT="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" \
+            DIAGNYX_CONFIG=/tmp/dx033.json ./publish/diagnyx log \
+            --level warn --message "dx-033 loki ci test" --source dx033-ci --context '{"k":"v"}'
+
+      - name: DX-033 - pushed entry is queryable via Loki's query API (same API Grafana Explore uses)
+        run: |
+          RESULT=""
+          for i in $(seq 1 20); do
+            RESPONSE=$(curl -sG "http://localhost:3100/loki/api/v1/query_range" \
+              --data-urlencode 'query={service_name="dx033-ci",level="warn"}' \
+              --data-urlencode 'limit=10')
+            RESULT=$(echo "$RESPONSE" | jq -r '.data.result[0].values[0][1] // empty')
+            [ -n "$RESULT" ] && break
+            sleep 0.5
+          done
+
+          test -n "$RESULT"
+          echo "$RESULT" | jq -e '.message == "dx-033 loki ci test"'
+          echo "$RESULT" | jq -e '.source == "dx033-ci"'
+          echo "$RESULT" | jq -e '.context.k == "v"'
+          echo "$RESULT" | jq -e '.traceId == "4bf92f3577b34da6a3ce929d0e0e4736"'
+          echo "$RESULT" | jq -e '.spanId == "00f067aa0ba902b7"'

@@ -89,8 +89,14 @@ Diagnyx is configured via a `diagnyx.config.json` file in your project root or `
                                              |
                                              |    +-----------------------------+
                                              +--->|  OTLP sink (optional)       |
-                                                  |  any OTel-compatible        |
-                                                  |  collector, via HTTP/JSON   |
+                                             |    |  any OTel-compatible        |
+                                             |    |  collector, via HTTP/JSON   |
+                                             |    +-----------------------------+
+                                             |
+                                             |    +-----------------------------+
+                                             +--->|  Loki sink (optional)       |
+                                                  |  push to Grafana Loki,      |
+                                                  |  queryable in Explore       |
                                                   +-----------------------------+
 ```
 

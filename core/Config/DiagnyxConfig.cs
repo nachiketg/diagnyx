@@ -15,6 +15,7 @@ internal sealed class SinkConfig
     public RdbmsSinkConfig? Mysql { get; set; }
     public RdbmsSinkConfig? Mssql { get; set; }
     public OtlpSinkConfig? Otlp { get; set; }
+    public LokiSinkConfig? Loki { get; set; }
 }
 
 internal sealed class FileSinkConfig
@@ -43,6 +44,11 @@ internal sealed class OtlpSinkConfig
     /// OtlpSink.IsRetryableStatus.
     /// </summary>
     public int MaxRetries { get; set; } = 3;
+}
+
+internal sealed class LokiSinkConfig
+{
+    public string Endpoint { get; set; } = string.Empty;
 }
 
 internal sealed class DefaultsConfig

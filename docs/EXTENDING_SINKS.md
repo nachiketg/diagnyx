@@ -147,4 +147,4 @@ internal sealed class HttpSink(string endpoint) : ISink
 
 Then follow steps 3–5 above to register it.
 
-See [`core/Sinks/OtlpSink.cs`](../core/Sinks/OtlpSink.cs) for a real example: it exports over OTLP/HTTP using the field mapping in [`docs/OTEL_MAPPING.md`](OTEL_MAPPING.md).
+See [`core/Sinks/OtlpSink.cs`](../core/Sinks/OtlpSink.cs) for a real example: it exports over OTLP/HTTP using the field mapping in [`docs/OTEL_MAPPING.md`](OTEL_MAPPING.md). [`core/Sinks/LokiSink.cs`](../core/Sinks/LokiSink.cs) is another: it reuses `LogEntryJson.Serialize` (the same line format `FileSink` writes) as the Loki log line, and adds only `source`/`level` as labels -- a reminder that a new sink doesn't need its own serialization logic when an existing one already produces the right shape.
