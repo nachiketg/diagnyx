@@ -772,7 +772,7 @@ jobs:
           test "$CODE" -eq 404
 
       - name: DX-035 - metrics output is valid Prometheus exposition format (promtool)
-        run: docker run --rm -i prom/prometheus:v2.53.0 promtool check metrics < /tmp/dx035/metrics.txt
+        run: docker run --rm -i --entrypoint promtool prom/prometheus:v2.53.0 check metrics < /tmp/dx035/metrics.txt
 
       - name: DX-035 - stop metrics server
         if: always()
