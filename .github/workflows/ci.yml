@@ -343,6 +343,20 @@ jobs:
           grep -q '"level":"info"'   /tmp/dx019/sdk.log
           grep -q '"source":"sdk-test"' /tmp/dx019/sdk.log
 
+      - name: DX-028 - .NET SDK accepts explicit and ambient (Activity.Current) trace context
+        env:
+          DIAGNYX_PATH: ./publish/diagnyx
+          DIAGNYX_CONFIG: /tmp/dx028-dotnet.json
+        run: |
+          mkdir -p /tmp/dx028
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx028/dotnet.log"}}}' \
+            > /tmp/dx028-dotnet.json
+          dotnet run --project packages/dotnet/tests/TraceContextSmokeTest/TraceContextSmokeTest.csproj
+          grep '"message":"explicit trace context"' /tmp/dx028/dotnet.log \
+            | jq -e '.traceId == "4bf92f3577b34da6a3ce929d0e0e4736" and .spanId == "00f067aa0ba902b7"'
+          grep '"message":"ambient activity trace context"' /tmp/dx028/dotnet.log \
+            | jq -e '(.traceId | test("^[0-9a-f]{32}$")) and (.spanId | test("^[0-9a-f]{16}$"))'
+
       - name: DX-017 - NuGet package bundles the platform-specific binary
         run: |
           mkdir -p packages/dotnet/runtimes/win-x64/native
@@ -395,12 +409,19 @@ jobs:
           grep -qi "diagnyx: warning: failed to invoke diagnyx cli" /tmp/dx019_start_err.txt
           ! grep -qi "unhandled exception" /tmp/dx019_start_err.txt
 
-      # ── DX-020/021/022: Node.js SDK package ──────────────────────────────────
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      # ── DX-029: OTel Logs Data Model mapping verification ────────────────────
+
+      - name: DX-029 - OTel mapping script passes and matches the checked-in sample export
+        run: |
+          node scripts/verify-otel-mapping.js < /dev/null > /tmp/dx029_output.json
+          diff /tmp/dx029_output.json docs/examples/otlp-log-export.json
+
+      # ── DX-020/021/022: Node.js SDK package ──────────────────────────────────
 
       - name: DX-022 - Node.js SDK syntax check (zero dependencies, no install needed)
         run: node --check packages/node/index.js
@@ -418,6 +439,20 @@ jobs:
           grep -q '"level":"info"'              /tmp/dx022/sdk.log
           grep -q '"source":"sdk-test-node"'    /tmp/dx022/sdk.log
           grep -q '"message":"node SDK smoke test"' /tmp/dx022/sdk.log
+
+      - name: DX-028 - Node.js SDK accepts explicit and ambient (withTraceContext) trace context
+        env:
+          DIAGNYX_PATH: ./publish/diagnyx
+          DIAGNYX_CONFIG: /tmp/dx028-node.json
+        run: |
+          mkdir -p /tmp/dx028
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx028/node.log"}}}' \
+            > /tmp/dx028-node.json
+          node packages/node/tests/trace-context-smoke.js
+          grep '"message":"explicit trace context"' /tmp/dx028/node.log \
+            | jq -e '.traceId == "4bf92f3577b34da6a3ce929d0e0e4736" and .spanId == "00f067aa0ba902b7"'
+          grep '"message":"ambient trace context after await"' /tmp/dx028/node.log \
+            | jq -e '.traceId == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" and .spanId == "bbbbbbbbbbbbbbbb"'
 
       - name: DX-022 - Node.js SDK fails gracefully when the binary cannot be resolved
         run: |
