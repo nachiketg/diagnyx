@@ -26,7 +26,7 @@ diagnyx/
 
 ## Quick Start
 
-> **Note:** v1 is under active development. No release has been published yet — these are the install commands and API shape once one is.
+> **Note:** v1 is under active development. Releases are published to [GitHub Releases](https://github.com/nachiketg/diagnyx/releases), NuGet, and npm as they're cut — the install commands below work today.
 
 ### .NET
 
