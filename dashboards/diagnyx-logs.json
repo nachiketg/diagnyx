@@ -1,0 +1,142 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Log Volume by Level",
+      "description": "Log entries per second, grouped by level. Uses the level label the Diagnyx Loki sink sets on every entry.",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "$datasource" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "$datasource" },
+          "expr": "sum by (level) (count_over_time({service_name=~\"$service_name\", level=~\"$level\"}[$__interval]))",
+          "legendFormat": "{{level}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Log Volume by Source",
+      "description": "Log entries per second, grouped by source. Uses the service_name label the Diagnyx Loki sink sets from the source field.",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "$datasource" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "$datasource" },
+          "expr": "sum by (service_name) (count_over_time({service_name=~\"$service_name\", level=~\"$level\"}[$__interval]))",
+          "legendFormat": "{{service_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Recent Logs",
+      "description": "Raw log lines. Each line is the full canonical Diagnyx JSON entry (see docs/SCHEMA.md) -- expand a line to see context, traceId, and spanId.",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "$datasource" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "$datasource" },
+          "expr": "{service_name=~\"$service_name\", level=~\"$level\"}"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["diagnyx", "loki"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Loki data source",
+        "type": "datasource",
+        "query": "loki",
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false
+      },
+      {
+        "name": "service_name",
+        "label": "Source",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "$datasource" },
+        "query": "label_values(service_name)",
+        "current": { "text": "All", "value": "$__all" },
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "skipUrlSync": false
+      },
+      {
+        "name": "level",
+        "label": "Level",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "$datasource" },
+        "query": "label_values(level)",
+        "current": { "text": "All", "value": "$__all" },
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Diagnyx Logs",
+  "uid": "diagnyx-logs",
+  "version": 1,
+  "weekStart": ""
+}

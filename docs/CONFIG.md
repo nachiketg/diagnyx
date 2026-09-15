@@ -192,6 +192,8 @@ Each `diagnyx log` call sends one `POST` request to Loki's push API with a singl
 
 A 10-second request timeout applies. If the request fails (connection error, timeout, or a non-2xx response — Loki returns `204 No Content` on success), the error is printed to stderr and the command exits `1` — the log entry is not retried or buffered.
 
+See [`dashboards/diagnyx-logs.json`](../dashboards/diagnyx-logs.json) for a starter Grafana dashboard that queries this sink's labels.
+
 ---
 
 ### `defaults.source`

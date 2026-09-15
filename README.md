@@ -19,6 +19,7 @@ diagnyx/
 │   ├── CONFIG.md           # Config file format reference
 │   ├── EXTENDING_SINKS.md  # How to add a new sink engine
 │   └── OTEL_MAPPING.md     # Field mapping onto the OpenTelemetry Logs Data Model
+├── dashboards/             # Starter Grafana dashboards for the loki sink
 ├── CONTRIBUTING.md
 └── LICENSE
 ```
@@ -101,6 +102,10 @@ Diagnyx is configured via a `diagnyx.config.json` file in your project root or `
 ```
 
 The core CLI is a single cross-platform binary (Native AOT, no .NET runtime required). Language wrappers are thin shims that invoke the CLI — no logic lives in the wrappers.
+
+## Grafana Dashboard
+
+Using the `loki` sink? [`dashboards/diagnyx-logs.json`](dashboards/diagnyx-logs.json) is a starter dashboard — log volume by level and by source, plus a raw log browser — that imports directly into Grafana. See [dashboards/README.md](dashboards/README.md) for import steps.
 
 ## Roadmap
 
