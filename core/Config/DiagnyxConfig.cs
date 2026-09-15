@@ -3,6 +3,7 @@ namespace Diagnyx.Core.Config;
 internal sealed class DiagnyxConfig
 {
     public SinkConfig Sink { get; set; } = new();
+    public MetricsConfig? Metrics { get; set; }
     public DefaultsConfig? Defaults { get; set; }
 }
 
@@ -49,6 +50,17 @@ internal sealed class OtlpSinkConfig
 internal sealed class LokiSinkConfig
 {
     public string Endpoint { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Independent of sink.type -- log-count metrics are tracked (if enabled)
+/// no matter which sink is active. Disabled by default: "diagnyx log" does
+/// no counter-store work at all unless this is turned on.
+/// </summary>
+internal sealed class MetricsConfig
+{
+    public bool Enabled { get; set; } = false;
+    public string Path { get; set; } = "~/.diagnyx/metrics.db";
 }
 
 internal sealed class DefaultsConfig

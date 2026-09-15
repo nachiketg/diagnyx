@@ -107,6 +107,20 @@ The core CLI is a single cross-platform binary (Native AOT, no .NET runtime requ
 
 Using the `loki` sink? [`dashboards/diagnyx-logs.json`](dashboards/diagnyx-logs.json) is a starter dashboard — log volume by level and by source, plus a raw log browser — that imports directly into Grafana. See [dashboards/README.md](dashboards/README.md) for import steps.
 
+## Prometheus Metrics
+
+An opt-in `/metrics` endpoint exposes log counts by level and source, independent of which sink is active. Disabled by default — enable it and run the server alongside your application:
+
+```json
+{ "metrics": { "enabled": true } }
+```
+
+```bash
+diagnyx metrics serve --port 9464
+```
+
+See [docs/CONFIG.md](docs/CONFIG.md#metrics) for details.
+
 ## Roadmap
 
 | Phase | Scope |

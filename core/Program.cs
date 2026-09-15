@@ -15,9 +15,10 @@ try
 {
     return args[0] switch
     {
-        "log"  => LogCommand.Run(args[1..]),
-        "init" => InitCommand.Run(args[1..]),
-        _      => Fail($"Unknown command '{args[0]}'. Run 'diagnyx --help' for usage.")
+        "log"     => LogCommand.Run(args[1..]),
+        "init"    => InitCommand.Run(args[1..]),
+        "metrics" => MetricsCommand.Run(args[1..]),
+        _         => Fail($"Unknown command '{args[0]}'. Run 'diagnyx --help' for usage.")
     };
 }
 catch (Exception ex)
@@ -33,10 +34,12 @@ static int PrintHelp()
         Usage:
           diagnyx log --level <level> --message <text> [--source <name>] [--context <json>]
           diagnyx init
+          diagnyx metrics serve [--port <port>]
 
         Commands:
-          log     Write a structured log entry to the configured sink.
-          init    Scaffold a default diagnyx.config.json in the current directory.
+          log             Write a structured log entry to the configured sink.
+          init            Scaffold a default diagnyx.config.json in the current directory.
+          metrics serve   Serve Prometheus-format log counts (requires metrics.enabled in config).
 
         Options:
           --help, -h      Show this help text.

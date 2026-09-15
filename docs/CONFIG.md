@@ -46,6 +46,10 @@ Run `diagnyx init` to scaffold a default config file in the current directory.
       "endpoint": "http://localhost:3100"
     }
   },
+  "metrics": {
+    "enabled": false,
+    "path": "~/.diagnyx/metrics.db"
+  },
   "defaults": {
     "source": "app"
   }
@@ -196,6 +200,55 @@ See [`dashboards/diagnyx-logs.json`](../dashboards/diagnyx-logs.json) for a star
 
 ---
 
+### `metrics`
+
+**Status: implemented (v1)**
+
+Independent of `sink.type` — metrics are tracked (if enabled) no matter which sink is active.
+
+| Key | Type | Required | Default | Description |
+|-----|------|----------|---------|-------------|
+| `enabled` | `boolean` | No | `false` | Opt-in. When `false` (the default), `diagnyx log` does no metrics-related work at all — no file is created. |
+| `path` | `string` | No | `~/.diagnyx/metrics.db` | Path to a local SQLite counter store. `~` is expanded. Created automatically on first write. |
+
+When enabled, every `diagnyx log` call increments a `(level, source)` counter in the store — a side effect independent of whether the sink write itself succeeds. A counter-store failure is printed as a `warning:` to stderr; it never changes the command's exit code.
+
+```json
+{
+  "metrics": {
+    "enabled": true,
+    "path": "~/.diagnyx/metrics.db"
+  }
+}
+```
+
+### `diagnyx metrics serve`
+
+Serves the counters as a Prometheus scrape target:
+
+```bash
+diagnyx metrics serve [--port <port>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--port` | `9464` | Port to listen on (`9464` is the IANA-registered default for Prometheus exporters). Must be `1`-`65535`. |
+
+Requires `metrics.enabled: true` in config — if metrics are disabled, the command fails immediately with a clear error rather than serving an endpoint that can never have data. The server binds to `localhost` only and serves exactly one route:
+
+- `GET /metrics` — current counts in [Prometheus text exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/):
+
+  ```
+  # HELP diagnyx_log_entries_total Total number of log entries processed by Diagnyx, by level and source.
+  # TYPE diagnyx_log_entries_total counter
+  diagnyx_log_entries_total{level="info",source="my-api"} 42
+  diagnyx_log_entries_total{level="error",source="my-api"} 3
+  ```
+
+Any other path returns `404`. The server runs until stopped (Ctrl+C, or the process is otherwise terminated) — it's meant to run under a process supervisor (systemd, a container, etc.) alongside your application, not to be started per log call.
+
+---
+
 ### `defaults.source`
 
 **Type:** `string`  
@@ -314,6 +367,23 @@ The value used for the `source` field when `--source` is not passed to `diagnyx 
   }
 }
 ```
+
+### With Prometheus metrics enabled
+
+`metrics` is independent of `sink` — it works alongside any sink:
+
+```json
+{
+  "sink": {
+    "type": "file"
+  },
+  "metrics": {
+    "enabled": true
+  }
+}
+```
+
+Run `diagnyx metrics serve` alongside your application to expose the counts at `http://localhost:9464/metrics`.
 
 ---
 

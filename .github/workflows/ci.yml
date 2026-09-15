@@ -726,3 +726,54 @@ jobs:
           jq -e '.dashboard.panels[] | select(.title=="Log Volume by Level")' /tmp/dx034-fetched.json
           jq -e '.dashboard.panels[] | select(.title=="Log Volume by Source")' /tmp/dx034-fetched.json
           jq -e '.dashboard.panels[] | select(.title=="Recent Logs")' /tmp/dx034-fetched.json
+
+      # ── DX-035: optional Prometheus metrics endpoint ─────────────────────────
+
+      - name: DX-035 - metrics are disabled by default (no counter store, serve refuses to start)
+        run: |
+          rm -rf "$HOME/.diagnyx"
+          ./publish/diagnyx log --level info --message "dx-035 no metrics" --source dx035-ci
+          test ! -f "$HOME/.diagnyx/metrics.db"
+
+          ./publish/diagnyx metrics serve 2>/tmp/dx035_disabled_err.txt && exit 1 || true
+          grep -qi "metrics are disabled" /tmp/dx035_disabled_err.txt
+
+      - name: DX-035 - enabling metrics records counts by level and source
+        run: |
+          mkdir -p /tmp/dx035
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx035/logs.log"}},"metrics":{"enabled":true,"path":"/tmp/dx035/metrics.db"}}' \
+            > /tmp/dx035/config.json
+          DIAGNYX_CONFIG=/tmp/dx035/config.json ./publish/diagnyx log --level info  --message "m1" --source svc-a
+          DIAGNYX_CONFIG=/tmp/dx035/config.json ./publish/diagnyx log --level info  --message "m2" --source svc-a
+          DIAGNYX_CONFIG=/tmp/dx035/config.json ./publish/diagnyx log --level error --message "m3" --source svc-a
+          DIAGNYX_CONFIG=/tmp/dx035/config.json ./publish/diagnyx log --level warn  --message "m4" --source svc-b
+          test -f /tmp/dx035/metrics.db
+
+      - name: DX-035 - metrics server exposes counts in Prometheus exposition format
+        run: |
+          DIAGNYX_CONFIG=/tmp/dx035/config.json ./publish/diagnyx metrics serve --port 9464 &
+          echo $! > /tmp/dx035/server.pid
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null http://localhost:9464/metrics && break
+            sleep 0.25
+          done
+
+          curl -sf http://localhost:9464/metrics > /tmp/dx035/metrics.txt
+          cat /tmp/dx035/metrics.txt
+          grep -q '^# HELP diagnyx_log_entries_total ' /tmp/dx035/metrics.txt
+          grep -q '^# TYPE diagnyx_log_entries_total counter$' /tmp/dx035/metrics.txt
+          grep -q 'diagnyx_log_entries_total{level="info",source="svc-a"} 2' /tmp/dx035/metrics.txt
+          grep -q 'diagnyx_log_entries_total{level="error",source="svc-a"} 1' /tmp/dx035/metrics.txt
+          grep -q 'diagnyx_log_entries_total{level="warn",source="svc-b"} 1' /tmp/dx035/metrics.txt
+
+      - name: DX-035 - unknown path returns 404
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9464/nonexistent)
+          test "$CODE" -eq 404
+
+      - name: DX-035 - metrics output is valid Prometheus exposition format (promtool)
+        run: docker run --rm -i prom/prometheus:v2.53.0 promtool check metrics < /tmp/dx035/metrics.txt
+
+      - name: DX-035 - stop metrics server
+        if: always()
+        run: kill "$(cat /tmp/dx035/server.pid)" 2>/dev/null || true
