@@ -41,6 +41,9 @@ Run `diagnyx init` to scaffold a default config file in the current directory.
     "otlp": {
       "endpoint": "http://localhost:4318",
       "maxRetries": 3
+    },
+    "loki": {
+      "endpoint": "http://localhost:3100"
     }
   },
   "defaults": {
@@ -69,6 +72,7 @@ Selects the active sink. Exactly one sink is active at a time.
 | `"mysql"` | Write rows to a MySQL database. |
 | `"mssql"` | Write rows to a Microsoft SQL Server database. |
 | `"otlp"` | Export to any OTel-compatible collector via OTLP/HTTP (JSON). |
+| `"loki"` | Push to a Grafana Loki-compatible endpoint. |
 
 ---
 
@@ -158,6 +162,35 @@ Each `diagnyx log` call sends one `POST` request with an OTLP/HTTP JSON body (`C
 - Any other non-2xx response (e.g. `400`, `401`, `404`) — not retried; the request itself is presumed unfixable by retrying, so the command fails immediately.
 
 Each retry prints a `warning:` line to stderr before sleeping. Once `maxRetries` is exhausted (or a non-retryable failure occurs), a final `error:` line is printed and the command exits `1` — the log entry is never silently discarded, but it is also not persisted or re-queued after the process exits.
+
+---
+
+### `sink.loki`
+
+**Status: implemented (v1)**
+
+Only read when `sink.type` is `"loki"`.
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `endpoint` | `string` | Yes | Base URL of a Grafana Loki-compatible endpoint, e.g. `http://localhost:3100`. `/loki/api/v1/push` is appended automatically unless the URL already ends with it. |
+
+Each `diagnyx log` call sends one `POST` request to Loki's push API with a single stream containing one entry:
+
+```json
+{
+  "streams": [
+    {
+      "stream": { "service_name": "my-api", "level": "info" },
+      "values": [["1735128896789000000", "{\"timestamp\":\"...\",\"level\":\"info\",\"message\":\"...\", ...}"]]
+    }
+  ]
+}
+```
+
+**Labels vs. line:** only `source` (as `service_name`) and `level` become Loki labels. Loki indexes streams by label, and label values need to stay low-cardinality — putting `message` or `traceId` in a label would create a new stream per log entry and degrade query performance, so they don't belong there. The log line itself is the full canonical JSON entry from [`docs/SCHEMA.md`](SCHEMA.md) (`timestamp`, `level`, `message`, `source`, `context`, `traceId`, `spanId`), so every field is still queryable in Grafana Explore via LogQL's `| json` parser, e.g. `{service_name="my-api"} | json | traceId="4bf92f3577b34da6a3ce929d0e0e4736"`.
+
+A 10-second request timeout applies. If the request fails (connection error, timeout, or a non-2xx response — Loki returns `204 No Content` on success), the error is printed to stderr and the command exits `1` — the log entry is not retried or buffered.
 
 ---
 
@@ -262,6 +295,19 @@ The value used for the `source` field when `--source` is not passed to `diagnyx 
     "otlp": {
       "endpoint": "http://localhost:4318",
       "maxRetries": 3
+    }
+  }
+}
+```
+
+### Loki / Grafana
+
+```json
+{
+  "sink": {
+    "type": "loki",
+    "loki": {
+      "endpoint": "http://localhost:3100"
     }
   }
 }
