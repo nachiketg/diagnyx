@@ -26,6 +26,10 @@ internal sealed class MssqlSink(string connectionString) : RdbmsSink(connectionS
         END
         """;
 
+    protected override string SelectSql(string whereClause) =>
+        "SELECT TOP (@limit) timestamp, level, message, source, context, trace_id, span_id " +
+        $"FROM diagnyx_logs {whereClause} ORDER BY timestamp DESC, id DESC";
+
     protected override DbConnection CreateConnection() =>
         new SqlConnection(ConnectionString);
 }

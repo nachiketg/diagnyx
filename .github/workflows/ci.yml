@@ -812,3 +812,173 @@ jobs:
       - name: DX-035 - stop metrics server
         if: always()
         run: kill "$(cat /tmp/dx035/server.pid)" 2>/dev/null || true
+
+      # ── DX-036: diagnyx query ────────────────────────────────────────────────
+      # One shared set of assertions runs against every queryable sink, so the
+      # filter semantics can't quietly drift between the file and SQL paths.
+
+      - name: DX-036 - write the query check library
+        run: |
+          mkdir -p /tmp/dx036
+          cat > /tmp/dx036/lib.sh <<'LIB'
+          DX="${DX:-./publish/diagnyx}"
+
+          fail() { echo "FAIL [$SINK]: $*"; exit 1; }
+
+          # expect <count> <query args...>: number of entries the query returns.
+          # The query runs on its own line so a failing query fails the step instead of
+          # looking like "0 results".
+          expect() {
+            local want="$1"; shift
+            local out got
+            out=$("$DX" query "$@")
+            got=$(printf '%s' "$out" | jq -s 'length')
+            [ "$got" = "$want" ] || fail "query $* returned $got entries, expected $want"
+          }
+
+          # first_message <query args...>: message of the first (oldest) returned entry.
+          first_message() {
+            local out
+            out=$("$DX" query "$@")
+            printf '%s' "$out" | jq -rs '.[0].message'
+          }
+
+          # run_query_checks <sink-name> <config-file>
+          run_query_checks() {
+            SINK="$1"
+            export DIAGNYX_CONFIG="$2"
+
+            "$DX" log --level info  --message "alpha startup complete" --source dx036-a
+            "$DX" log --level error --message "beta payment failed"    --source dx036-a --context '{"orderId":"ord-42"}'
+            "$DX" log --level warn  --message "gamma cache miss"       --source dx036-b
+            "$DX" log --level error --message "delta timeout"          --source dx036-b
+            "$DX" log --level info  --message "disk 100% full [ok]"    --source dx036-c
+
+            # Exact filters.
+            expect 2 --source dx036-a
+            expect 1 --source dx036-a --level error
+            expect 0 --source dx036-a --level fatal
+
+            # Case-insensitive source and contains; contains also searches context.
+            expect 1 --source DX036-A --contains PAYMENT
+            expect 1 --source dx036-a --contains ord-42
+            expect 0 --source dx036-a --contains no-such-text
+
+            # Time range: relative and absolute, inclusive bounds.
+            expect 2 --source dx036-b --since 1h
+            expect 2 --source dx036-b --since 1d --until 2099-01-01T00:00:00Z
+            expect 0 --source dx036-b --since 2099-01-01
+            expect 0 --source dx036-b --until 2000-01-01
+
+            # Bounds are inclusive: a timestamp taken from an entry includes that entry.
+            local newest
+            newest=$("$DX" query --source dx036-b --limit 1 | jq -r '.timestamp')
+            expect 1 --source dx036-b --since "$newest"
+            expect 2 --source dx036-b --until "$newest"
+
+            # Order is oldest-first; --limit keeps the most recent matches.
+            [ "$(first_message --source dx036-a)" = "alpha startup complete" ] || fail "results are not oldest-first"
+            expect 1 --source dx036-a --limit 1
+            [ "$(first_message --source dx036-a --limit 1)" = "beta payment failed" ] || fail "--limit did not keep the most recent entry"
+
+            # LIKE wildcards in the search text must be literal (%, _ and, on SQL Server, [).
+            expect 1 --source dx036-c --contains '100%'
+            expect 0 --source dx036-c --contains '1%f'
+            expect 0 --source dx036-c --contains 'd_sk'
+            expect 1 --source dx036-c --contains '[ok]'
+            expect 0 --source dx036-c --contains '[o]'
+
+            # Output is the canonical schema, whichever sink it came from.
+            "$DX" query --source dx036-a --level error \
+              | jq -e '.context.orderId == "ord-42" and .source == "dx036-a" and .level == "error" and has("traceId") and has("spanId") and (.timestamp | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*Z$"))' > /dev/null \
+              || fail "output is not a canonical schema entry"
+
+            echo "OK [$SINK]: query checks passed"
+          }
+
+          # expect_error <stderr-pattern> <query args...>: the query must fail with a matching message.
+          expect_error() {
+            local pattern="$1"; shift
+            local err
+            if err=$("$DX" query "$@" 2>&1 >/dev/null); then
+              fail "query $* should have failed"
+            fi
+            printf '%s' "$err" | grep -qi -- "$pattern" || fail "query $* failed with an unexpected message: $err"
+          }
+
+          # run_query_input_checks <config-with-dx036-b-entries>: input parsing and error reporting.
+          run_query_input_checks() {
+            SINK="input"
+            export DIAGNYX_CONFIG="$1"
+
+            # Every supported time format is accepted (all are earlier than the entries).
+            for t in 30s 5m 2h 7d 2w 2026-01-01 2026-01-01T00:00Z 2026-01-01T00:00:00Z \
+                     2026-01-01T00:00:00 2026-01-01T00:00:00.123Z 2026-01-01T00:00:00+02:00; do
+              expect 2 --source dx036-b --since "$t"
+            done
+
+            expect_error "invalid --since"        --since bogus
+            expect_error "invalid --since"        --since 0m
+            expect_error "invalid --since"        --since -5m
+            expect_error "invalid --since"        --since 99999999d
+            expect_error "invalid --since"        --since 01/02/2026
+            expect_error "invalid --until"        --until bogus
+            expect_error "not be later than"      --since 2099-01-01 --until 2000-01-01
+            expect_error "Invalid level"          --level nope
+            expect_error "unknown option"         --bogus x
+            expect_error "positive integer"       --limit 0
+            expect_error "positive integer"       --limit abc
+            expect_error "requires a non-empty"   --since
+            expect_error "requires a non-empty"   --contains ""
+
+            # Export-only sinks can't be read back.
+            printf '{"sink":{"type":"otlp","otlp":{"endpoint":"http://127.0.0.1:9"}}}' > /tmp/dx036/otlp.json
+            DIAGNYX_CONFIG=/tmp/dx036/otlp.json expect_error "write-only"
+            printf '{"sink":{"type":"loki","loki":{"endpoint":"http://127.0.0.1:9"}}}' > /tmp/dx036/loki.json
+            DIAGNYX_CONFIG=/tmp/dx036/loki.json expect_error "write-only"
+
+            # A store that has never been written to is an empty result, not an error.
+            printf '{"sink":{"type":"file","file":{"path":"/tmp/dx036/never-written.log"}}}' > /tmp/dx036/empty-file.json
+            printf '{"sink":{"type":"sqlite","sqlite":{"path":"/tmp/dx036/never-written.db"}}}' > /tmp/dx036/empty-sqlite.json
+            rm -f /tmp/dx036/never-written.log /tmp/dx036/never-written.db
+            DIAGNYX_CONFIG=/tmp/dx036/empty-file.json   expect 0
+            DIAGNYX_CONFIG=/tmp/dx036/empty-sqlite.json expect 0
+
+            echo "OK: query input and error checks passed"
+          }
+          LIB
+
+      - name: DX-036 - query returns matching entries from the file sink
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx036/file.log"}}}' > /tmp/dx036/file.json
+          source /tmp/dx036/lib.sh
+          run_query_checks file /tmp/dx036/file.json
+
+      - name: DX-036 - query returns matching entries from the SQLite sink
+        run: |
+          printf '{"sink":{"type":"sqlite","sqlite":{"path":"/tmp/dx036/sqlite.db"}}}' > /tmp/dx036/sqlite.json
+          source /tmp/dx036/lib.sh
+          run_query_checks sqlite /tmp/dx036/sqlite.json
+
+      - name: DX-036 - query returns matching entries from the PostgreSQL sink
+        run: |
+          printf '{"sink":{"type":"postgres","postgres":{"connectionString":"Host=localhost;Port=5432;Database=diagnyx_test;Username=postgres;Password=postgres"}}}' > /tmp/dx036/postgres.json
+          source /tmp/dx036/lib.sh
+          run_query_checks postgres /tmp/dx036/postgres.json
+
+      - name: DX-036 - query returns matching entries from the MySQL sink
+        run: |
+          printf '{"sink":{"type":"mysql","mysql":{"connectionString":"Server=127.0.0.1;Port=3306;Database=diagnyx_test;Uid=root;Pwd=mysql;"}}}' > /tmp/dx036/mysql.json
+          source /tmp/dx036/lib.sh
+          run_query_checks mysql /tmp/dx036/mysql.json
+
+      - name: DX-036 - query returns matching entries from the SQL Server sink
+        run: |
+          printf '{"sink":{"type":"mssql","mssql":{"connectionString":"Server=localhost,1433;Database=diagnyx_test;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True"}}}' > /tmp/dx036/mssql.json
+          source /tmp/dx036/lib.sh
+          run_query_checks mssql /tmp/dx036/mssql.json
+
+      - name: DX-036 - query validates its input and reports errors clearly
+        run: |
+          source /tmp/dx036/lib.sh
+          run_query_input_checks /tmp/dx036/file.json

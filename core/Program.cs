@@ -16,6 +16,7 @@ try
     return args[0] switch
     {
         "log"     => LogCommand.Run(args[1..]),
+        "query"   => QueryCommand.Run(args[1..]),
         "init"    => InitCommand.Run(args[1..]),
         "metrics" => MetricsCommand.Run(args[1..]),
         _         => Fail($"Unknown command '{args[0]}'. Run 'diagnyx --help' for usage.")
@@ -33,11 +34,14 @@ static int PrintHelp()
 
         Usage:
           diagnyx log --level <level> --message <text> [--source <name>] [--context <json>]
+          diagnyx query [--since <time>] [--until <time>] [--level <level>] [--source <name>]
+                        [--contains <text>] [--limit <n>]
           diagnyx init
           diagnyx metrics serve [--port <port>]
 
         Commands:
           log             Write a structured log entry to the configured sink.
+          query           Search entries in the configured file or database sink.
           init            Scaffold a default diagnyx.config.json in the current directory.
           metrics serve   Serve Prometheus-format log counts (requires metrics.enabled in config).
 

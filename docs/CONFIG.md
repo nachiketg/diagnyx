@@ -68,6 +68,8 @@ Run `diagnyx init` to scaffold a default config file in the current directory.
 
 Selects the active sink. Exactly one sink is active at a time.
 
+`file` and the database sinks can also be read back with [`diagnyx query`](QUERY.md); `otlp` and `loki` are export-only.
+
 | Value | Description |
 |-------|-------------|
 | `"file"` | Write JSON Lines to a local file (default; zero setup). |
