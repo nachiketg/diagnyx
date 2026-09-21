@@ -6,15 +6,17 @@ This document explains the sink abstraction so you can add new storage backends 
 
 ```
 ISink
- ├── FileSink          (file, default)
- └── RdbmsSink         (abstract base for all database engines)
+ ├── FileSink          (file, default; also IQueryableSink)
+ ├── OtlpSink          (otlp; export-only)
+ ├── LokiSink          (loki; export-only)
+ └── RdbmsSink         (abstract base for all database engines; also IQueryableSink)
       ├── SqliteSink
       ├── PostgresSink
       ├── MySqlSink
       └── MssqlSink
 ```
 
-`ISink` is the only contract the CLI knows about. `SinkFactory` maps a config `sink.type` value to a concrete instance. Everything else — connection management, table creation, parameter binding — lives inside the sink classes.
+`ISink` is the only contract `diagnyx log` knows about. `SinkFactory` maps a config `sink.type` value to a concrete instance. Everything else — connection management, table creation, parameter binding — lives inside the sink classes.
 
 ## ISink
 
@@ -102,6 +104,25 @@ public RdbmsSinkConfig? MyEngine { get; set; }
 ### 5. Document the config option
 
 Add the new sink type to `docs/CONFIG.md` under both the `sink.type` enum table and a dedicated `sink.myengine` section.
+
+---
+
+## Making a Sink Queryable
+
+`diagnyx query` reads back through an optional second interface:
+
+```csharp
+internal interface IQueryableSink
+{
+    IReadOnlyList<LogEntry> Query(LogQuery query);
+}
+```
+
+Implement it only if your storage can be read back. `Query` returns the most recent `query.Limit` entries matching the filters, **oldest first**, and follows the rules in [QUERY.md](QUERY.md#matching-rules) — the same on every sink, so results don't depend on where logs are stored. Throw with an actionable message if the store can't be read; a store that simply has nothing in it yet is an empty result, not an error. Export-only sinks (like `otlp` and `loki`) don't implement it, and `diagnyx query` reports that clearly.
+
+- **RDBMS engines** get this for free from `RdbmsSink`, which builds one parameterized `SELECT`. If your engine has no `LIMIT`, override `SelectSql` (SQL Server does, to use `TOP`).
+- **`FileSink`** filters in memory with `LogQuery.Matches`; `LogEntryJson.TryParse` is the inverse of `LogEntryJson.Serialize`.
+- Any change to the matching rules has to be made in both places — `LogQuery.Matches` and the SQL in `RdbmsSink.ReadEntries` — and CI runs one shared set of assertions against every queryable sink to keep them in step.
 
 ---
 

@@ -42,4 +42,47 @@ internal static class LogEntryJson
 
         return Encoding.UTF8.GetString(ms.ToArray());
     }
+
+    /// <summary>
+    /// The inverse of <see cref="Serialize"/>. Returns false for anything that
+    /// isn't a JSON object carrying the four required fields as strings, so a
+    /// torn or foreign line in a log file can be skipped rather than fatal.
+    /// </summary>
+    public static bool TryParse(string line, out LogEntry entry)
+    {
+        entry = null!;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return false;
+
+            var timestamp = GetString(root, "timestamp");
+            var level = GetString(root, "level");
+            var message = GetString(root, "message");
+            var source = GetString(root, "source");
+            if (timestamp is null || level is null || message is null || source is null)
+                return false;
+
+            var context = root.TryGetProperty("context", out var ctx) && ctx.ValueKind == JsonValueKind.Object
+                ? ctx.GetRawText()
+                : null;
+
+            entry = new LogEntry(
+                timestamp, level, message, source, context,
+                GetString(root, "traceId"), GetString(root, "spanId"));
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string? GetString(JsonElement obj, string name) =>
+        obj.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 }

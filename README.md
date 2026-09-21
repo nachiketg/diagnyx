@@ -18,6 +18,7 @@ diagnyx/
 │   ├── SCHEMA.md           # Log entry JSON schema (the contract)
 │   ├── CONFIG.md           # Config file format reference
 │   ├── EXTENDING_SINKS.md  # How to add a new sink engine
+│   ├── QUERY.md            # diagnyx query reference
 │   └── OTEL_MAPPING.md     # Field mapping onto the OpenTelemetry Logs Data Model
 ├── dashboards/             # Starter Grafana dashboards for the loki sink
 ├── CONTRIBUTING.md
@@ -73,6 +74,16 @@ Example entry:
 ## Configuration
 
 Diagnyx is configured via a `diagnyx.config.json` file in your project root or `~/.diagnyx/`. Run `diagnyx init` to scaffold a default config. See [docs/CONFIG.md](docs/CONFIG.md) for all options.
+
+## Querying Logs
+
+Search what you've logged — by time range, level, source, and text — without writing SQL or grepping files. It works against the file sink and every database sink:
+
+```bash
+diagnyx query --since 1h --level error --source my-api --contains timeout
+```
+
+See [docs/QUERY.md](docs/QUERY.md) for all flags and matching rules.
 
 ## Architecture
 
