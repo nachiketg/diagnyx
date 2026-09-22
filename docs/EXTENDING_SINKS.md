@@ -121,6 +121,7 @@ internal interface IQueryableSink
 Implement it only if your storage can be read back. `Query` returns the most recent `query.Limit` entries matching the filters, **oldest first**, and follows the rules in [QUERY.md](QUERY.md#matching-rules) — the same on every sink, so results don't depend on where logs are stored. Throw with an actionable message if the store can't be read; a store that simply has nothing in it yet is an empty result, not an error. Export-only sinks (like `otlp` and `loki`) don't implement it, and `diagnyx query` reports that clearly.
 
 - **RDBMS engines** get this for free from `RdbmsSink`, which builds one parameterized `SELECT`. If your engine has no `LIMIT`, override `SelectSql` (SQL Server does, to use `TOP`).
+- **RDBMS engines also get delete-older-than retention for free.** Pass an optional `RdbmsRetentionPolicy?` through your sink's constructor to `RdbmsSink`'s (see `SqliteSink`, `PostgresSink`), and wire `sink.myengine.maxAge`/`retentionCheckProbability` through `SinkFactory.BuildRetentionPolicy` like the existing engines do. No engine-specific SQL needed — the cleanup `DELETE` lives once in `RdbmsSink`.
 - **`FileSink`** filters in memory with `LogQuery.Matches`; `LogEntryJson.TryParse` is the inverse of `LogEntryJson.Serialize`.
 - Any change to the matching rules has to be made in both places — `LogQuery.Matches` and the SQL in `RdbmsSink.ReadEntries` — and CI runs one shared set of assertions against every queryable sink to keep them in step.
 

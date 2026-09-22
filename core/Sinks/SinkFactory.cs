@@ -1,3 +1,4 @@
+using System.Globalization;
 using Diagnyx.Core.Config;
 using Diagnyx.Core.Logging;
 
@@ -54,38 +55,58 @@ internal static class SinkFactory
 
     private static SqliteSink CreateSqliteSink(DiagnyxConfig config)
     {
-        var rawPath = config.Sink.Sqlite?.Path ?? "~/.diagnyx/diagnyx.db";
-        return new SqliteSink(ConfigLoader.ExpandPath(rawPath));
+        var sqlite = config.Sink.Sqlite;
+        var rawPath = sqlite?.Path ?? "~/.diagnyx/diagnyx.db";
+        return new SqliteSink(ConfigLoader.ExpandPath(rawPath), BuildRetentionPolicy("sqlite", sqlite));
     }
 
     private static PostgresSink CreatePostgresSink(DiagnyxConfig config)
     {
-        var cs = config.Sink.Postgres?.ConnectionString;
-        if (string.IsNullOrWhiteSpace(cs))
+        var postgres = config.Sink.Postgres;
+        if (string.IsNullOrWhiteSpace(postgres?.ConnectionString))
             throw new InvalidOperationException(
                 "sink.postgres.connectionString is required when sink.type is 'postgres'. " +
                 "See docs/CONFIG.md.");
-        return new PostgresSink(cs);
+        return new PostgresSink(postgres.ConnectionString, BuildRetentionPolicy("postgres", postgres));
     }
 
     private static MySqlSink CreateMysqlSink(DiagnyxConfig config)
     {
-        var cs = config.Sink.Mysql?.ConnectionString;
-        if (string.IsNullOrWhiteSpace(cs))
+        var mysql = config.Sink.Mysql;
+        if (string.IsNullOrWhiteSpace(mysql?.ConnectionString))
             throw new InvalidOperationException(
                 "sink.mysql.connectionString is required when sink.type is 'mysql'. " +
                 "See docs/CONFIG.md.");
-        return new MySqlSink(cs);
+        return new MySqlSink(mysql.ConnectionString, BuildRetentionPolicy("mysql", mysql));
     }
 
     private static MssqlSink CreateMssqlSink(DiagnyxConfig config)
     {
-        var cs = config.Sink.Mssql?.ConnectionString;
-        if (string.IsNullOrWhiteSpace(cs))
+        var mssql = config.Sink.Mssql;
+        if (string.IsNullOrWhiteSpace(mssql?.ConnectionString))
             throw new InvalidOperationException(
                 "sink.mssql.connectionString is required when sink.type is 'mssql'. " +
                 "See docs/CONFIG.md.");
-        return new MssqlSink(cs);
+        return new MssqlSink(mssql.ConnectionString, BuildRetentionPolicy("mssql", mssql));
+    }
+
+    private static RdbmsRetentionPolicy? BuildRetentionPolicy(string configKey, IRetentionConfig? config)
+    {
+        if (config?.MaxAge is null)
+            return null;
+
+        if (!DurationParser.TryParse(config.MaxAge, out var span))
+            throw new InvalidOperationException(
+                $"sink.{configKey}.maxAge '{config.MaxAge}' is not a valid duration. " +
+                "Use a number plus a unit, e.g. \"30d\" or \"720h\" (units: s, m, h, d, w). " +
+                "See docs/CONFIG.md.");
+
+        if (config.RetentionCheckProbability is < 0 or > 1)
+            throw new InvalidOperationException(
+                $"sink.{configKey}.retentionCheckProbability must be between 0 and 1, got " +
+                $"{config.RetentionCheckProbability.ToString(CultureInfo.InvariantCulture)}. See docs/CONFIG.md.");
+
+        return new RdbmsRetentionPolicy(span, config.RetentionCheckProbability);
     }
 
     private static OtlpSink CreateOtlpSink(DiagnyxConfig config)

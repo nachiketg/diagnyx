@@ -47,14 +47,40 @@ internal sealed class FileSinkConfig
     public int MaxBackups { get; set; } = 5;
 }
 
-internal sealed class SqliteSinkConfig
+/// <summary>
+/// Shared by every RDBMS sink's config type (SqliteSinkConfig, RdbmsSinkConfig)
+/// so SinkFactory can build a retention policy from any of them the same way.
+/// </summary>
+internal interface IRetentionConfig
 {
-    public string Path { get; set; } = "~/.diagnyx/diagnyx.db";
+    /// <summary>
+    /// Delete rows older than this on some writes, e.g. "30d", "720h". A
+    /// duration string (see DurationParser). Unset (the default) means no
+    /// retention cleanup at all -- diagnyx_logs grows unbounded.
+    /// </summary>
+    string? MaxAge { get; }
+
+    /// <summary>
+    /// Chance (0.0-1.0) that a given write also runs the cleanup DELETE.
+    /// There is no background process, so this -- not a timer -- is what
+    /// keeps cleanup from adding a query to every single write. 1 means
+    /// every write; useful for a low-volume sink or a deterministic test.
+    /// </summary>
+    double RetentionCheckProbability { get; }
 }
 
-internal sealed class RdbmsSinkConfig
+internal sealed class SqliteSinkConfig : IRetentionConfig
+{
+    public string Path { get; set; } = "~/.diagnyx/diagnyx.db";
+    public string? MaxAge { get; set; }
+    public double RetentionCheckProbability { get; set; } = 0.01;
+}
+
+internal sealed class RdbmsSinkConfig : IRetentionConfig
 {
     public string ConnectionString { get; set; } = string.Empty;
+    public string? MaxAge { get; set; }
+    public double RetentionCheckProbability { get; set; } = 0.01;
 }
 
 internal sealed class OtlpSinkConfig

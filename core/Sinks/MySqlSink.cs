@@ -3,7 +3,7 @@ using MySqlConnector;
 
 namespace Diagnyx.Core.Sinks;
 
-internal sealed class MySqlSink(string connectionString) : RdbmsSink(connectionString)
+internal sealed class MySqlSink(string connectionString, RdbmsRetentionPolicy? retention = null) : RdbmsSink(connectionString, retention)
 {
     protected override string EngineLabel => "MySQL";
 

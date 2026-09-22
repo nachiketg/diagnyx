@@ -3,7 +3,7 @@ using Npgsql;
 
 namespace Diagnyx.Core.Sinks;
 
-internal sealed class PostgresSink(string connectionString) : RdbmsSink(connectionString)
+internal sealed class PostgresSink(string connectionString, RdbmsRetentionPolicy? retention = null) : RdbmsSink(connectionString, retention)
 {
     protected override string EngineLabel => "PostgreSQL";
 

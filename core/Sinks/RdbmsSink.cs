@@ -3,7 +3,7 @@ using Diagnyx.Core.Logging;
 
 namespace Diagnyx.Core.Sinks;
 
-internal abstract class RdbmsSink(string connectionString) : ISink, IQueryableSink
+internal abstract class RdbmsSink(string connectionString, RdbmsRetentionPolicy? retention = null) : ISink, IQueryableSink
 {
     protected string ConnectionString { get; } = connectionString;
 
@@ -11,6 +11,8 @@ internal abstract class RdbmsSink(string connectionString) : ISink, IQueryableSi
         "INSERT INTO diagnyx_logs " +
         "(timestamp, level, message, source, context, trace_id, span_id) " +
         "VALUES (@timestamp, @level, @message, @source, @context, @traceId, @spanId)";
+
+    private const string DeleteOlderThanSql = "DELETE FROM diagnyx_logs WHERE timestamp < @cutoff";
 
     /// <summary>Human-readable engine name used in error messages (e.g. "PostgreSQL").</summary>
     protected abstract string EngineLabel { get; }
@@ -60,7 +62,6 @@ internal abstract class RdbmsSink(string connectionString) : ISink, IQueryableSi
             try
             {
                 Insert(conn, entry);
-                return 0;
             }
             catch (Exception ex)
             {
@@ -68,6 +69,24 @@ internal abstract class RdbmsSink(string connectionString) : ISink, IQueryableSi
                     $"error: {EngineLabel} write failed: {ex.Message}");
                 return 1;
             }
+
+            // Retention is a secondary concern: the entry above already made
+            // it in, so a cleanup problem is a warning, never a reason to
+            // report this write as failed.
+            if (retention?.ShouldCheck() == true)
+            {
+                try
+                {
+                    DeleteOlderThan(conn, retention.Cutoff());
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(
+                        $"warning: {EngineLabel} retention cleanup failed: {ex.Message}");
+                }
+            }
+
+            return 0;
         }
     }
 
@@ -187,6 +206,14 @@ internal abstract class RdbmsSink(string connectionString) : ISink, IQueryableSi
         AddParam(cmd, "@context",   entry.ContextJson);
         AddParam(cmd, "@traceId",   entry.TraceId);
         AddParam(cmd, "@spanId",    entry.SpanId);
+        cmd.ExecuteNonQuery();
+    }
+
+    private static void DeleteOlderThan(DbConnection conn, string cutoff)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = DeleteOlderThanSql;
+        AddParam(cmd, "@cutoff", cutoff);
         cmd.ExecuteNonQuery();
     }
 
