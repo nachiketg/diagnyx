@@ -1,4 +1,5 @@
 using Diagnyx.Core.Config;
+using Diagnyx.Core.Logging;
 
 namespace Diagnyx.Core.Sinks;
 
@@ -22,8 +23,33 @@ internal static class SinkFactory
 
     private static FileSink CreateFileSink(DiagnyxConfig config)
     {
-        var rawPath = config.Sink.File?.Path ?? "~/.diagnyx/logs/diagnyx.log";
-        return new FileSink(ConfigLoader.ExpandPath(rawPath));
+        var fileConfig = config.Sink.File;
+        var rawPath = fileConfig?.Path ?? "~/.diagnyx/logs/diagnyx.log";
+        return new FileSink(ConfigLoader.ExpandPath(rawPath), BuildRotationPolicy(fileConfig));
+    }
+
+    private static FileRotationPolicy? BuildRotationPolicy(FileSinkConfig? config)
+    {
+        if (config is null || (config.MaxAge is null && config.MaxSizeBytes is null))
+            return null;
+
+        TimeSpan? maxAge = null;
+        if (config.MaxAge is not null)
+        {
+            if (!DurationParser.TryParse(config.MaxAge, out var span))
+                throw new InvalidOperationException(
+                    $"sink.file.maxAge '{config.MaxAge}' is not a valid duration. " +
+                    "Use a number plus a unit, e.g. \"7d\" or \"24h\" (units: s, m, h, d, w). " +
+                    "See docs/CONFIG.md.");
+            maxAge = span;
+        }
+
+        if (config.MaxSizeBytes is <= 0)
+            throw new InvalidOperationException(
+                $"sink.file.maxSizeBytes must be a positive number, got {config.MaxSizeBytes}. " +
+                "See docs/CONFIG.md.");
+
+        return new FileRotationPolicy(maxAge, config.MaxSizeBytes, config.MaxBackups);
     }
 
     private static SqliteSink CreateSqliteSink(DiagnyxConfig config)

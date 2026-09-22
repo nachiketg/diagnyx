@@ -3,7 +3,7 @@ using Diagnyx.Core.Logging;
 
 namespace Diagnyx.Core.Sinks;
 
-internal sealed class FileSink(string path) : ISink, IQueryableSink
+internal sealed class FileSink(string path, FileRotationPolicy? rotation = null) : ISink, IQueryableSink
 {
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
@@ -15,6 +15,8 @@ internal sealed class FileSink(string path) : ISink, IQueryableSink
             if (!string.IsNullOrEmpty(dir))
                 Directory.CreateDirectory(dir);
 
+            TryRotate();
+
             File.AppendAllText(path, LogEntryJson.Serialize(entry) + "\n", Utf8NoBom);
             return 0;
         }
@@ -22,6 +24,24 @@ internal sealed class FileSink(string path) : ISink, IQueryableSink
         {
             Console.Error.WriteLine($"error: failed to write log entry: {ex.Message}");
             return 1;
+        }
+    }
+
+    // A rotation failure (e.g. a rotated file locked by another process) is
+    // reported but never blocks the write -- an oversized or stale-but-intact
+    // file beats losing the entry.
+    private void TryRotate()
+    {
+        if (rotation is null || !rotation.ShouldRotate(path))
+            return;
+
+        try
+        {
+            rotation.Rotate(path);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"warning: log rotation failed, continuing to write to the existing file: {ex.Message}");
         }
     }
 

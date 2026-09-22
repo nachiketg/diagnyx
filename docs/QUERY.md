@@ -67,3 +67,4 @@ Results are printed as [JSON Lines](https://jsonlines.org/), one entry per line,
 - **Nothing logged yet is not an error.** A missing log file or empty database returns no output and exits `0`. No matches also exits `0`; exit `1` means the query itself couldn't run (bad flag, unreachable database, export-only sink).
 - **Database sinks** run the filters in SQL, so only matching rows are transferred — safe to point at a large table.
 - **The file sink** streams the log file, so it works while another process is still appending to it. Lines that aren't valid Diagnyx entries are skipped, and a single `warning:` line reports how many.
+- **The file sink only reads the active file.** If [`sink.file.maxAge`/`maxSizeBytes`](CONFIG.md#sinkfile) rotation is enabled, rotated backups (`diagnyx.log.1`, `.2`, ...) aren't included in query results.

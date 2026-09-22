@@ -982,3 +982,92 @@ jobs:
         run: |
           source /tmp/dx036/lib.sh
           run_query_input_checks /tmp/dx036/file.json
+
+      # ── DX-037: file sink retention/rotation ─────────────────────────────────
+
+      - name: DX-037 - no rotation config leaves the file sink unchanged
+        run: |
+          mkdir -p /tmp/dx037
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx037/plain.log"}}}' > /tmp/dx037/plain.json
+          DIAGNYX_CONFIG=/tmp/dx037/plain.json ./publish/diagnyx log --level info --message "a"
+          DIAGNYX_CONFIG=/tmp/dx037/plain.json ./publish/diagnyx log --level info --message "b"
+          test "$(wc -l < /tmp/dx037/plain.log)" -eq 2
+          test ! -f /tmp/dx037/plain.log.1
+
+      - name: DX-037 - size-based rotation caps backups at maxBackups
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx037/size.log","maxSizeBytes":150,"maxBackups":2}}}' \
+            > /tmp/dx037/size.json
+          for i in 1 2 3 4 5 6; do
+            DIAGNYX_CONFIG=/tmp/dx037/size.json ./publish/diagnyx log \
+              --level info --message "entry number $i padding padding padding"
+          done
+          test -f /tmp/dx037/size.log
+          test -f /tmp/dx037/size.log.1
+          test -f /tmp/dx037/size.log.2
+          test ! -f /tmp/dx037/size.log.3
+          grep -q '"entry number 6' /tmp/dx037/size.log
+          grep -q '"entry number 5' /tmp/dx037/size.log.1
+          grep -q '"entry number 4' /tmp/dx037/size.log.2
+
+      - name: DX-037 - age-based rotation
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx037/age.log","maxAge":"1s","maxBackups":3}}}' \
+            > /tmp/dx037/age.json
+          DIAGNYX_CONFIG=/tmp/dx037/age.json ./publish/diagnyx log --level info --message "before"
+          sleep 2
+          DIAGNYX_CONFIG=/tmp/dx037/age.json ./publish/diagnyx log --level info --message "after"
+          test -f /tmp/dx037/age.log.1
+          grep -q "before" /tmp/dx037/age.log.1
+          grep -q "after" /tmp/dx037/age.log
+          ! grep -q "before" /tmp/dx037/age.log
+
+      - name: DX-037 - maxBackups 0 rotates without keeping any backup
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx037/zero.log","maxSizeBytes":10,"maxBackups":0}}}' \
+            > /tmp/dx037/zero.json
+          DIAGNYX_CONFIG=/tmp/dx037/zero.json ./publish/diagnyx log --level info --message "one"
+          DIAGNYX_CONFIG=/tmp/dx037/zero.json ./publish/diagnyx log --level info --message "two"
+          test ! -f /tmp/dx037/zero.log.1
+          grep -q "two" /tmp/dx037/zero.log
+          ! grep -q '"one"' /tmp/dx037/zero.log
+
+      - name: DX-037 - lowering maxBackups prunes pre-existing excess backups
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx037/shrink.log","maxSizeBytes":1,"maxBackups":5}}}' \
+            > /tmp/dx037/shrink.json
+          for i in 1 2 3 4 5; do
+            DIAGNYX_CONFIG=/tmp/dx037/shrink.json ./publish/diagnyx log --level info --message "e$i"
+          done
+          test -f /tmp/dx037/shrink.log.4
+          sed -i.bak 's/"maxBackups":5/"maxBackups":2/' /tmp/dx037/shrink.json
+          DIAGNYX_CONFIG=/tmp/dx037/shrink.json ./publish/diagnyx log --level info --message "e6"
+          test -f /tmp/dx037/shrink.log.1
+          test -f /tmp/dx037/shrink.log.2
+          test ! -f /tmp/dx037/shrink.log.3
+          test ! -f /tmp/dx037/shrink.log.4
+
+      - name: DX-037 - invalid rotation config is a clear error
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx037/bad.log","maxAge":"nope"}}}' \
+            > /tmp/dx037/badage.json
+          DIAGNYX_CONFIG=/tmp/dx037/badage.json ./publish/diagnyx log \
+            --level info --message "x" 2>/tmp/dx037/badage_err.txt && exit 1 || true
+          grep -qi "sink.file.maxAge 'nope' is not a valid duration" /tmp/dx037/badage_err.txt
+
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx037/bad.log","maxSizeBytes":0}}}' \
+            > /tmp/dx037/badsize.json
+          DIAGNYX_CONFIG=/tmp/dx037/badsize.json ./publish/diagnyx log \
+            --level info --message "x" 2>/tmp/dx037/badsize_err.txt && exit 1 || true
+          grep -qi "sink.file.maxSizeBytes must be a positive number" /tmp/dx037/badsize_err.txt
+
+      - name: DX-037 - query only sees the active file, not rotated backups
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx037/qtest.log","maxSizeBytes":10,"maxBackups":2}}}' \
+            > /tmp/dx037/qtest.json
+          DIAGNYX_CONFIG=/tmp/dx037/qtest.json ./publish/diagnyx log --level info --message "old one" --source dx037-q
+          DIAGNYX_CONFIG=/tmp/dx037/qtest.json ./publish/diagnyx log --level info --message "new one" --source dx037-q
+          test -f /tmp/dx037/qtest.log.1
+          OUT=$(DIAGNYX_CONFIG=/tmp/dx037/qtest.json ./publish/diagnyx query --source dx037-q)
+          echo "$OUT" | jq -es 'length == 1' > /dev/null
+          echo "$OUT" | jq -e '.message == "new one"' > /dev/null
