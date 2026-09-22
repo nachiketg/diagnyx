@@ -1187,3 +1187,129 @@ jobs:
             > /tmp/dx038/negprob.json
           expect_error "must be between 0 and 1" /tmp/dx038/negprob.json
           echo "OK: retention input checks passed"
+
+      # ── DX-039: v1 config files stay backward compatible ─────────────────────
+      # Every config below is copied verbatim from the docs/CONFIG.md that
+      # shipped in v0.1.0 (git show v0.1.0:docs/CONFIG.md), before any Phase 2
+      # field existed -- the actual JSON a v1 user's config file would contain,
+      # not a guess at what "old" looks like.
+
+      - name: DX-039 - a config file that is just {} behaves like v1's zero-config default
+        run: |
+          rm -rf "$HOME/.diagnyx"
+          printf '{}' > /tmp/dx039-empty.json
+          DIAGNYX_CONFIG=/tmp/dx039-empty.json ./publish/diagnyx log \
+            --level info --message "dx-039 empty config" --source dx039-v1compat
+          test -f "$HOME/.diagnyx/logs/diagnyx.log"
+          grep -q '"message":"dx-039 empty config"' "$HOME/.diagnyx/logs/diagnyx.log"
+          test ! -f "$HOME/.diagnyx/logs/diagnyx.log.1"
+          test ! -f "$HOME/.diagnyx/metrics.db"
+
+      - name: 'DX-039 - v0.1.0 CONFIG.md example: Minimal (all defaults)'
+        run: |
+          rm -rf "$HOME/.diagnyx"
+          printf '{"sink":{"type":"file"}}' > /tmp/dx039-minimal.json
+          DIAGNYX_CONFIG=/tmp/dx039-minimal.json ./publish/diagnyx log \
+            --level warn --message "dx-039 minimal" --source dx039-v1compat
+          grep -q '"message":"dx-039 minimal"' "$HOME/.diagnyx/logs/diagnyx.log"
+
+      - name: 'DX-039 - v0.1.0 CONFIG.md example: Custom file path'
+        run: |
+          mkdir -p /tmp/dx039
+          cat > /tmp/dx039-customfile.json <<'JSON'
+          {
+            "sink": {
+              "type": "file",
+              "file": {
+                "path": "/tmp/dx039/app.log"
+              }
+            },
+            "defaults": {
+              "source": "my-api"
+            }
+          }
+          JSON
+          DIAGNYX_CONFIG=/tmp/dx039-customfile.json ./publish/diagnyx log \
+            --level info --message "dx-039 custom path"
+          grep -q '"source":"my-api"' /tmp/dx039/app.log
+          grep -q '"message":"dx-039 custom path"' /tmp/dx039/app.log
+          test ! -f /tmp/dx039/app.log.1
+
+      - name: 'DX-039 - v0.1.0 CONFIG.md example: SQLite'
+        run: |
+          cat > /tmp/dx039-sqlite.json <<'JSON'
+          {
+            "sink": {
+              "type": "sqlite",
+              "sqlite": {
+                "path": "/tmp/dx039/diagnyx.db"
+              }
+            },
+            "defaults": {
+              "source": "my-api"
+            }
+          }
+          JSON
+          DIAGNYX_CONFIG=/tmp/dx039-sqlite.json ./publish/diagnyx log \
+            --level error --message "dx-039 sqlite" --source dx039-v1compat \
+            --context '{"orderId":"ord-1"}'
+          COUNT=$(sqlite3 /tmp/dx039/diagnyx.db \
+            "SELECT COUNT(*) FROM diagnyx_logs WHERE source='dx039-v1compat'")
+          test "$COUNT" -eq 1
+          test ! -f "$HOME/.diagnyx/metrics.db"
+
+      - name: 'DX-039 - v0.1.0 CONFIG.md example: PostgreSQL'
+        run: |
+          cat > /tmp/dx039-postgres.json <<'JSON'
+          {
+            "sink": {
+              "type": "postgres",
+              "postgres": {
+                "connectionString": "Host=localhost;Port=5432;Database=diagnyx_test;Username=postgres;Password=postgres"
+              }
+            }
+          }
+          JSON
+          DIAGNYX_CONFIG=/tmp/dx039-postgres.json ./publish/diagnyx log \
+            --level info --message "dx-039 postgres" --source dx039-v1compat
+          COUNT=$(PGPASSWORD=postgres psql -h localhost -U postgres -d diagnyx_test \
+            -t -c "SELECT COUNT(*) FROM diagnyx_logs WHERE source='dx039-v1compat';" | tr -d ' \n')
+          test "$COUNT" -eq 1
+
+      - name: 'DX-039 - v0.1.0 CONFIG.md example: MySQL'
+        run: |
+          cat > /tmp/dx039-mysql.json <<'JSON'
+          {
+            "sink": {
+              "type": "mysql",
+              "mysql": {
+                "connectionString": "Server=127.0.0.1;Port=3306;Database=diagnyx_test;Uid=root;Pwd=mysql;"
+              }
+            }
+          }
+          JSON
+          DIAGNYX_CONFIG=/tmp/dx039-mysql.json ./publish/diagnyx log \
+            --level info --message "dx-039 mysql" --source dx039-v1compat
+          COUNT=$(mysql -h 127.0.0.1 -P 3306 -u root -pmysql diagnyx_test -sN \
+            -e "SELECT COUNT(*) FROM diagnyx_logs WHERE source='dx039-v1compat';")
+          test "$COUNT" -eq 1
+
+      - name: 'DX-039 - v0.1.0 CONFIG.md example: Microsoft SQL Server'
+        run: |
+          cat > /tmp/dx039-mssql.json <<'JSON'
+          {
+            "sink": {
+              "type": "mssql",
+              "mssql": {
+                "connectionString": "Server=localhost,1433;Database=diagnyx_test;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True"
+              }
+            }
+          }
+          JSON
+          DIAGNYX_CONFIG=/tmp/dx039-mssql.json ./publish/diagnyx log \
+            --level info --message "dx-039 mssql" --source dx039-v1compat
+          COUNT=$(sqlcmd -S localhost,1433 -U sa -P 'YourStrong!Passw0rd' -C \
+            -d diagnyx_test \
+            -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM diagnyx_logs WHERE source='dx039-v1compat'" \
+            -h -1 | tr -d ' \r\n')
+          test "$COUNT" -eq 1

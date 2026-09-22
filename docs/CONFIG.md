@@ -16,6 +16,14 @@ Run `diagnyx init` to scaffold a default config file in the current directory.
 
 ---
 
+## Backward Compatibility
+
+Every config field added after v1 (`maxAge`, `maxSizeBytes`, `maxBackups` on `file`; `maxAge`, `retentionCheckProbability` on the RDBMS sinks; the `otlp`, `loki`, and `metrics` sections) is optional and defaults to "behave exactly like v1" when absent — no rotation, no retention cleanup, no metrics tracking. A v1 config file, including the minimal `{"sink":{"type":"file"}}` or even an empty `{}`, still produces the same file or RDBMS logging, unmodified, on the current release. CI runs the actual config examples from [v0.1.0's `docs/CONFIG.md`](https://github.com/nachiketg/diagnyx/blob/v0.1.0/docs/CONFIG.md) against every release to keep this true.
+
+The seven-field [log entry schema](SCHEMA.md) itself hasn't changed either — `traceId`/`spanId` were already part of it in v1 (always `null` then), so existing consumers parsing that JSON don't need to change either.
+
+---
+
 ## Full Schema
 
 ```json
