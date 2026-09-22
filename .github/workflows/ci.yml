@@ -1071,3 +1071,119 @@ jobs:
           OUT=$(DIAGNYX_CONFIG=/tmp/dx037/qtest.json ./publish/diagnyx query --source dx037-q)
           echo "$OUT" | jq -es 'length == 1' > /dev/null
           echo "$OUT" | jq -e '.message == "new one"' > /dev/null
+
+      # ── DX-038: retention policy for RDBMS sinks ─────────────────────────────
+      # Same shared-library approach as DX-036: one set of assertions run
+      # against every RDBMS engine, so a failure names the engine and the
+      # behavior can't quietly drift between them.
+
+      - name: DX-038 - write the retention check library
+        run: |
+          mkdir -p /tmp/dx038
+          cat > /tmp/dx038/lib.sh <<'LIB'
+          DX="${DX:-./publish/diagnyx}"
+
+          fail() { echo "FAIL [$SINK]: $*"; exit 1; }
+
+          # count <config-file> <source>: number of entries diagnyx query returns for that source.
+          count() {
+            DIAGNYX_CONFIG="$1" "$DX" query --source "$2" | jq -s 'length'
+          }
+
+          # run_retention_checks <sink-name> <plain-config> <clean-config> <never-config>
+          #   plain: no maxAge at all.
+          #   clean: maxAge=1s, retentionCheckProbability=1 (clean up on every write).
+          #   never: maxAge=1s, retentionCheckProbability=0 (never clean up).
+          run_retention_checks() {
+            SINK="$1"; PLAIN="$2"; CLEAN="$3"; NEVER="$4"
+
+            DIAGNYX_CONFIG="$PLAIN" "$DX" log --level info --message "plain old" --source dx038-plain
+            sleep 1.5
+            DIAGNYX_CONFIG="$PLAIN" "$DX" log --level info --message "plain new" --source dx038-plain
+            [ "$(count "$PLAIN" dx038-plain)" = "2" ] || fail "no retention configured should keep both entries"
+
+            DIAGNYX_CONFIG="$CLEAN" "$DX" log --level info --message "clean old" --source dx038-clean
+            sleep 1.5
+            DIAGNYX_CONFIG="$CLEAN" "$DX" log --level info --message "clean new" --source dx038-clean
+            [ "$(count "$CLEAN" dx038-clean)" = "1" ] || fail "probability 1 should have deleted the old entry"
+            DIAGNYX_CONFIG="$CLEAN" "$DX" query --source dx038-clean \
+              | jq -e '.message == "clean new"' > /dev/null || fail "wrong entry survived cleanup"
+
+            DIAGNYX_CONFIG="$NEVER" "$DX" log --level info --message "never old" --source dx038-never
+            sleep 1.5
+            DIAGNYX_CONFIG="$NEVER" "$DX" log --level info --message "never new" --source dx038-never
+            [ "$(count "$NEVER" dx038-never)" = "2" ] || fail "probability 0 should never delete despite maxAge"
+
+            echo "OK [$SINK]: retention checks passed"
+          }
+
+          # expect_error <stderr-pattern> <config-file>: a log call must fail with a matching message.
+          expect_error() {
+            local pattern="$1" cfg="$2"
+            local err
+            if err=$(DIAGNYX_CONFIG="$cfg" "$DX" log --level info --message "x" 2>&1 >/dev/null); then
+              fail "log with $cfg should have failed"
+            fi
+            printf '%s' "$err" | grep -qi -- "$pattern" || fail "$cfg failed with an unexpected message: $err"
+          }
+          LIB
+
+      - name: DX-038 - retention cleanup works on the SQLite sink
+        run: |
+          printf '{"sink":{"type":"sqlite","sqlite":{"path":"/tmp/dx038/sqlite-plain.db"}}}' \
+            > /tmp/dx038/sqlite-plain.json
+          printf '{"sink":{"type":"sqlite","sqlite":{"path":"/tmp/dx038/sqlite-clean.db","maxAge":"1s","retentionCheckProbability":1}}}' \
+            > /tmp/dx038/sqlite-clean.json
+          printf '{"sink":{"type":"sqlite","sqlite":{"path":"/tmp/dx038/sqlite-never.db","maxAge":"1s","retentionCheckProbability":0}}}' \
+            > /tmp/dx038/sqlite-never.json
+          source /tmp/dx038/lib.sh
+          run_retention_checks sqlite /tmp/dx038/sqlite-plain.json /tmp/dx038/sqlite-clean.json /tmp/dx038/sqlite-never.json
+
+      - name: DX-038 - retention cleanup works on the PostgreSQL sink
+        run: |
+          printf '{"sink":{"type":"postgres","postgres":{"connectionString":"Host=localhost;Port=5432;Database=diagnyx_test;Username=postgres;Password=postgres"}}}' \
+            > /tmp/dx038/postgres-plain.json
+          printf '{"sink":{"type":"postgres","postgres":{"connectionString":"Host=localhost;Port=5432;Database=diagnyx_test;Username=postgres;Password=postgres","maxAge":"1s","retentionCheckProbability":1}}}' \
+            > /tmp/dx038/postgres-clean.json
+          printf '{"sink":{"type":"postgres","postgres":{"connectionString":"Host=localhost;Port=5432;Database=diagnyx_test;Username=postgres;Password=postgres","maxAge":"1s","retentionCheckProbability":0}}}' \
+            > /tmp/dx038/postgres-never.json
+          source /tmp/dx038/lib.sh
+          run_retention_checks postgres /tmp/dx038/postgres-plain.json /tmp/dx038/postgres-clean.json /tmp/dx038/postgres-never.json
+
+      - name: DX-038 - retention cleanup works on the MySQL sink
+        run: |
+          printf '{"sink":{"type":"mysql","mysql":{"connectionString":"Server=127.0.0.1;Port=3306;Database=diagnyx_test;Uid=root;Pwd=mysql;"}}}' \
+            > /tmp/dx038/mysql-plain.json
+          printf '{"sink":{"type":"mysql","mysql":{"connectionString":"Server=127.0.0.1;Port=3306;Database=diagnyx_test;Uid=root;Pwd=mysql;","maxAge":"1s","retentionCheckProbability":1}}}' \
+            > /tmp/dx038/mysql-clean.json
+          printf '{"sink":{"type":"mysql","mysql":{"connectionString":"Server=127.0.0.1;Port=3306;Database=diagnyx_test;Uid=root;Pwd=mysql;","maxAge":"1s","retentionCheckProbability":0}}}' \
+            > /tmp/dx038/mysql-never.json
+          source /tmp/dx038/lib.sh
+          run_retention_checks mysql /tmp/dx038/mysql-plain.json /tmp/dx038/mysql-clean.json /tmp/dx038/mysql-never.json
+
+      - name: DX-038 - retention cleanup works on the SQL Server sink
+        run: |
+          printf '{"sink":{"type":"mssql","mssql":{"connectionString":"Server=localhost,1433;Database=diagnyx_test;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True"}}}' \
+            > /tmp/dx038/mssql-plain.json
+          printf '{"sink":{"type":"mssql","mssql":{"connectionString":"Server=localhost,1433;Database=diagnyx_test;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True","maxAge":"1s","retentionCheckProbability":1}}}' \
+            > /tmp/dx038/mssql-clean.json
+          printf '{"sink":{"type":"mssql","mssql":{"connectionString":"Server=localhost,1433;Database=diagnyx_test;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True","maxAge":"1s","retentionCheckProbability":0}}}' \
+            > /tmp/dx038/mssql-never.json
+          source /tmp/dx038/lib.sh
+          run_retention_checks mssql /tmp/dx038/mssql-plain.json /tmp/dx038/mssql-clean.json /tmp/dx038/mssql-never.json
+
+      - name: DX-038 - invalid retention config is a clear error
+        run: |
+          source /tmp/dx038/lib.sh
+          printf '{"sink":{"type":"sqlite","sqlite":{"path":"/tmp/dx038/badage.db","maxAge":"bogus"}}}' \
+            > /tmp/dx038/badage.json
+          expect_error "not a valid duration" /tmp/dx038/badage.json
+
+          printf '{"sink":{"type":"sqlite","sqlite":{"path":"/tmp/dx038/badprob.db","maxAge":"1d","retentionCheckProbability":1.5}}}' \
+            > /tmp/dx038/badprob.json
+          expect_error "must be between 0 and 1" /tmp/dx038/badprob.json
+
+          printf '{"sink":{"type":"sqlite","sqlite":{"path":"/tmp/dx038/negprob.db","maxAge":"1d","retentionCheckProbability":-0.1}}}' \
+            > /tmp/dx038/negprob.json
+          expect_error "must be between 0 and 1" /tmp/dx038/negprob.json
+          echo "OK: retention input checks passed"

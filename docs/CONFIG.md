@@ -30,16 +30,24 @@ Run `diagnyx init` to scaffold a default config file in the current directory.
       "maxBackups": 5
     },
     "sqlite": {
-      "path": "~/.diagnyx/diagnyx.db"
+      "path": "~/.diagnyx/diagnyx.db",
+      "maxAge": "30d",
+      "retentionCheckProbability": 0.01
     },
     "postgres": {
-      "connectionString": "Host=localhost;Port=5432;Database=diagnyx;Username=user;Password=pass"
+      "connectionString": "Host=localhost;Port=5432;Database=diagnyx;Username=user;Password=pass",
+      "maxAge": "30d",
+      "retentionCheckProbability": 0.01
     },
     "mysql": {
-      "connectionString": "Server=localhost;Port=3306;Database=diagnyx;Uid=user;Pwd=pass"
+      "connectionString": "Server=localhost;Port=3306;Database=diagnyx;Uid=user;Pwd=pass",
+      "maxAge": "30d",
+      "retentionCheckProbability": 0.01
     },
     "mssql": {
-      "connectionString": "Server=localhost;Database=diagnyx;User Id=user;Password=pass;TrustServerCertificate=True"
+      "connectionString": "Server=localhost;Database=diagnyx;User Id=user;Password=pass;TrustServerCertificate=True",
+      "maxAge": "30d",
+      "retentionCheckProbability": 0.01
     },
     "otlp": {
       "endpoint": "http://localhost:4318",
@@ -125,6 +133,8 @@ Only read when `sink.type` is `"sqlite"`.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `path` | `string` | `~/.diagnyx/diagnyx.db` | Path to the SQLite database file. Created automatically on first run. `~` is expanded. |
+| `maxAge` | `string` | unset | Delete rows older than this on some writes, e.g. `"30d"`, `"720h"`. Same duration syntax as [`diagnyx query`](QUERY.md#time-values)'s `--since`/`--until`. No retention cleanup if unset. |
+| `retentionCheckProbability` | `number` | `0.01` | Chance (0-1) that a given write also runs the cleanup. See [Retention](#retention-rdbms-sinks) below. |
 
 The `diagnyx_logs` table is created automatically if it does not exist. All columns use SQLite `TEXT` affinity, which is flexible and requires no driver configuration.
 
@@ -139,6 +149,8 @@ Only read when `sink.type` is `"postgres"`.
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `connectionString` | `string` | Yes | A standard [Npgsql connection string](https://www.npgsql.org/doc/connection-string-parameters.html). |
+| `maxAge` | `string` | No | Delete rows older than this on some writes, e.g. `"30d"`, `"720h"`. Same duration syntax as [`diagnyx query`](QUERY.md#time-values)'s `--since`/`--until`. No retention cleanup if unset. |
+| `retentionCheckProbability` | `number` | No | Chance (0-1, default `0.01`) that a given write also runs the cleanup. See [Retention](#retention-rdbms-sinks) below. |
 
 The `diagnyx_logs` table is created automatically on first run. `timestamp` and `context` are stored as `TEXT` for maximum compatibility. To query as typed values use SQL casts: `timestamp::timestamptz`, `context::jsonb`.
 
@@ -153,6 +165,8 @@ Only read when `sink.type` is `"mysql"`.
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `connectionString` | `string` | Yes | A standard [MySqlConnector connection string](https://mysqlconnector.net/connection-options/). |
+| `maxAge` | `string` | No | Delete rows older than this on some writes, e.g. `"30d"`, `"720h"`. Same duration syntax as [`diagnyx query`](QUERY.md#time-values)'s `--since`/`--until`. No retention cleanup if unset. |
+| `retentionCheckProbability` | `number` | No | Chance (0-1, default `0.01`) that a given write also runs the cleanup. See [Retention](#retention-rdbms-sinks) below. |
 
 The `diagnyx_logs` table is created automatically on first run using `InnoDB` / `utf8mb4`. `timestamp` and `context` are stored as `VARCHAR(50)` and `TEXT` respectively, so plain string parameters from ADO.NET bind without driver type coercion.
 
@@ -167,8 +181,34 @@ Only read when `sink.type` is `"mssql"`.
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `connectionString` | `string` | Yes | A standard [Microsoft.Data.SqlClient connection string](https://learn.microsoft.com/en-us/dotnet/api/microsoft.data.sqlclient.sqlconnection.connectionstring). |
+| `maxAge` | `string` | No | Delete rows older than this on some writes, e.g. `"30d"`, `"720h"`. Same duration syntax as [`diagnyx query`](QUERY.md#time-values)'s `--since`/`--until`. No retention cleanup if unset. |
+| `retentionCheckProbability` | `number` | No | Chance (0-1, default `0.01`) that a given write also runs the cleanup. See [Retention](#retention-rdbms-sinks) below. |
 
 The `diagnyx_logs` table is created automatically on first run. `timestamp` is stored as `NVARCHAR(50)` (ISO 8601 string) for consistent TEXT storage across all engines. Include `TrustServerCertificate=True` in the connection string when connecting to a local or self-signed instance.
+
+---
+
+## Retention (RDBMS Sinks)
+
+`maxAge` and `retentionCheckProbability` work the same way across `sqlite`, `postgres`, `mysql`, and `mssql`. With neither set, `diagnyx_logs` grows unbounded, exactly like before this was added.
+
+There's no background process, so cleanup can't run on a wall-clock timer. Instead, `retentionCheckProbability` is the chance that any *given* write also runs `DELETE FROM diagnyx_logs WHERE timestamp < cutoff` on the same connection: at the default `0.01`, roughly 1 in 100 writes pays for a cleanup pass, keeping the common case a plain insert while still bounding growth over many writes. Set it to `1` to clean up on every write (fine for a low-volume sink), or to `0` to disable cleanup while keeping `maxAge` configured (e.g. to stage the setting without it taking effect yet).
+
+A cleanup failure is a `warning:` on stderr, never a write failure — the entry you just logged is never at risk because of it.
+
+```json
+{
+  "sink": {
+    "type": "postgres",
+    "postgres": {
+      "connectionString": "Host=localhost;Port=5432;Database=diagnyx;Username=user;Password=pass",
+      "maxAge": "30d"
+    }
+  }
+}
+```
+
+`diagnyx query` and this cleanup act on the same table independently — nothing about retention changes what `--since`/`--until` can see; a deleted row is simply gone from both.
 
 ---
 

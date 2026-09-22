@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Diagnyx.Core.Sinks;
 
-internal sealed class SqliteSink(string dbPath) : RdbmsSink(dbPath)
+internal sealed class SqliteSink(string dbPath, RdbmsRetentionPolicy? retention = null) : RdbmsSink(dbPath, retention)
 {
     protected override string EngineLabel => "SQLite";
 

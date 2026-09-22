@@ -3,7 +3,7 @@ using Microsoft.Data.SqlClient;
 
 namespace Diagnyx.Core.Sinks;
 
-internal sealed class MssqlSink(string connectionString) : RdbmsSink(connectionString)
+internal sealed class MssqlSink(string connectionString, RdbmsRetentionPolicy? retention = null) : RdbmsSink(connectionString, retention)
 {
     protected override string EngineLabel => "SQL Server";
 
