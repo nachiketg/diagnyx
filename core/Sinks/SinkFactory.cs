@@ -8,19 +8,42 @@ internal static class SinkFactory
 {
     internal static ISink Create(DiagnyxConfig config)
     {
-        return (config.Sink.Type ?? "file").ToLowerInvariant() switch
-        {
-            "file"     => CreateFileSink(config),
-            "sqlite"   => CreateSqliteSink(config),
-            "postgres" => CreatePostgresSink(config),
-            "mysql"    => CreateMysqlSink(config),
-            "mssql"    => CreateMssqlSink(config),
-            "otlp"     => CreateOtlpSink(config),
-            "loki"     => CreateLokiSink(config),
-            var t      => throw new InvalidOperationException(
-                $"Unknown sink type '{t}'. Valid values: file, sqlite, postgres, mysql, mssql, otlp, loki.")
-        };
+        var types = ResolveTypes(config);
+        var sinks = types.Select(t => CreateOne(t, config)).ToArray();
+        return sinks.Length == 1 ? sinks[0] : new FanOutSink(types, sinks);
     }
+
+    // sink.types (fan-out) takes priority over sink.type when set and
+    // non-empty; an empty or absent list falls back to the single-sink field,
+    // exactly as before sink.types existed.
+    private static IReadOnlyList<string> ResolveTypes(DiagnyxConfig config)
+    {
+        if (config.Sink.Types is { Count: > 0 } types)
+        {
+            var normalized = types.Select(t => t.ToLowerInvariant()).ToList();
+            var duplicates = normalized.GroupBy(t => t).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+            if (duplicates.Count > 0)
+                throw new InvalidOperationException(
+                    $"sink.types contains duplicate entries: {string.Join(", ", duplicates)}. " +
+                    "Each sink type may appear at most once. See docs/CONFIG.md.");
+            return normalized;
+        }
+
+        return [(config.Sink.Type ?? "file").ToLowerInvariant()];
+    }
+
+    private static ISink CreateOne(string type, DiagnyxConfig config) => type switch
+    {
+        "file"     => CreateFileSink(config),
+        "sqlite"   => CreateSqliteSink(config),
+        "postgres" => CreatePostgresSink(config),
+        "mysql"    => CreateMysqlSink(config),
+        "mssql"    => CreateMssqlSink(config),
+        "otlp"     => CreateOtlpSink(config),
+        "loki"     => CreateLokiSink(config),
+        var t      => throw new InvalidOperationException(
+            $"Unknown sink type '{t}'. Valid values: file, sqlite, postgres, mysql, mssql, otlp, loki.")
+    };
 
     private static FileSink CreateFileSink(DiagnyxConfig config)
     {
@@ -65,7 +88,7 @@ internal static class SinkFactory
         var postgres = config.Sink.Postgres;
         if (string.IsNullOrWhiteSpace(postgres?.ConnectionString))
             throw new InvalidOperationException(
-                "sink.postgres.connectionString is required when sink.type is 'postgres'. " +
+                "sink.postgres.connectionString is required to use the 'postgres' sink. " +
                 "See docs/CONFIG.md.");
         return new PostgresSink(postgres.ConnectionString, BuildRetentionPolicy("postgres", postgres));
     }
@@ -75,7 +98,7 @@ internal static class SinkFactory
         var mysql = config.Sink.Mysql;
         if (string.IsNullOrWhiteSpace(mysql?.ConnectionString))
             throw new InvalidOperationException(
-                "sink.mysql.connectionString is required when sink.type is 'mysql'. " +
+                "sink.mysql.connectionString is required to use the 'mysql' sink. " +
                 "See docs/CONFIG.md.");
         return new MySqlSink(mysql.ConnectionString, BuildRetentionPolicy("mysql", mysql));
     }
@@ -85,7 +108,7 @@ internal static class SinkFactory
         var mssql = config.Sink.Mssql;
         if (string.IsNullOrWhiteSpace(mssql?.ConnectionString))
             throw new InvalidOperationException(
-                "sink.mssql.connectionString is required when sink.type is 'mssql'. " +
+                "sink.mssql.connectionString is required to use the 'mssql' sink. " +
                 "See docs/CONFIG.md.");
         return new MssqlSink(mssql.ConnectionString, BuildRetentionPolicy("mssql", mssql));
     }
@@ -114,7 +137,7 @@ internal static class SinkFactory
         var otlp = config.Sink.Otlp;
         if (string.IsNullOrWhiteSpace(otlp?.Endpoint))
             throw new InvalidOperationException(
-                "sink.otlp.endpoint is required when sink.type is 'otlp'. " +
+                "sink.otlp.endpoint is required to use the 'otlp' sink. " +
                 "See docs/CONFIG.md.");
         return new OtlpSink(otlp.Endpoint, otlp.MaxRetries);
     }
@@ -124,7 +147,7 @@ internal static class SinkFactory
         var endpoint = config.Sink.Loki?.Endpoint;
         if (string.IsNullOrWhiteSpace(endpoint))
             throw new InvalidOperationException(
-                "sink.loki.endpoint is required when sink.type is 'loki'. " +
+                "sink.loki.endpoint is required to use the 'loki' sink. " +
                 "See docs/CONFIG.md.");
         return new LokiSink(endpoint);
     }

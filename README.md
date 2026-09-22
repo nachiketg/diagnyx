@@ -73,7 +73,7 @@ Example entry:
 
 ## Configuration
 
-Diagnyx is configured via a `diagnyx.config.json` file in your project root or `~/.diagnyx/`. Run `diagnyx init` to scaffold a default config. See [docs/CONFIG.md](docs/CONFIG.md) for all options — every Phase 2 addition is optional, so a v1 config file keeps working [unmodified](docs/CONFIG.md#backward-compatibility).
+Diagnyx is configured via a `diagnyx.config.json` file in your project root or `~/.diagnyx/`. Run `diagnyx init` to scaffold a default config. See [docs/CONFIG.md](docs/CONFIG.md) for all options — every Phase 2 addition is optional, so a v1 config file keeps working [unmodified](docs/CONFIG.md#backward-compatibility). Need more than one sink at once — a local file plus an OTLP export, say? [`sink.types`](docs/CONFIG.md#sinktypes-fan-out) fans out to all of them, and a failure in one never blocks the others.
 
 ## Querying Logs
 

@@ -18,7 +18,7 @@ Run `diagnyx init` to scaffold a default config file in the current directory.
 
 ## Backward Compatibility
 
-Every config field added after v1 (`maxAge`, `maxSizeBytes`, `maxBackups` on `file`; `maxAge`, `retentionCheckProbability` on the RDBMS sinks; the `otlp`, `loki`, and `metrics` sections) is optional and defaults to "behave exactly like v1" when absent — no rotation, no retention cleanup, no metrics tracking. A v1 config file, including the minimal `{"sink":{"type":"file"}}` or even an empty `{}`, still produces the same file or RDBMS logging, unmodified, on the current release. CI runs the actual config examples from [v0.1.0's `docs/CONFIG.md`](https://github.com/nachiketg/diagnyx/blob/v0.1.0/docs/CONFIG.md) against every release to keep this true.
+Every config field added after v1 (`maxAge`, `maxSizeBytes`, `maxBackups` on `file`; `maxAge`, `retentionCheckProbability` on the RDBMS sinks; `sink.types`; the `otlp`, `loki`, and `metrics` sections) is optional and defaults to "behave exactly like v1" when absent — no rotation, no retention cleanup, no fan-out, no metrics tracking. A v1 config file, including the minimal `{"sink":{"type":"file"}}` or even an empty `{}`, still produces the same file or RDBMS logging, unmodified, on the current release. CI runs the actual config examples from [v0.1.0's `docs/CONFIG.md`](https://github.com/nachiketg/diagnyx/blob/v0.1.0/docs/CONFIG.md) against every release to keep this true.
 
 The seven-field [log entry schema](SCHEMA.md) itself hasn't changed either — `traceId`/`spanId` were already part of it in v1 (always `null` then), so existing consumers parsing that JSON don't need to change either.
 
@@ -85,7 +85,7 @@ The seven-field [log entry schema](SCHEMA.md) itself hasn't changed either — `
 **Required:** No  
 **Default:** `"file"`
 
-Selects the active sink. Exactly one sink is active at a time.
+Selects the active sink. Read only when [`sink.types`](#sinktypes-fan-out) is unset or empty.
 
 `file` and the database sinks can also be read back with [`diagnyx query`](QUERY.md); `otlp` and `loki` are export-only.
 
@@ -98,6 +98,35 @@ Selects the active sink. Exactly one sink is active at a time.
 | `"mssql"` | Write rows to a Microsoft SQL Server database. |
 | `"otlp"` | Export to any OTel-compatible collector via OTLP/HTTP (JSON). |
 | `"loki"` | Push to a Grafana Loki-compatible endpoint. |
+
+---
+
+### `sink.types` (fan-out)
+
+**Type:** `string[]`  
+**Required:** No  
+**Default:** unset (single-sink, via `sink.type`)
+
+Write to more than one sink at once, e.g. keep a local file while also exporting to an OTel collector:
+
+```json
+{
+  "sink": {
+    "types": ["file", "otlp"],
+    "file": { "path": "~/.diagnyx/logs/diagnyx.log" },
+    "otlp": { "endpoint": "http://localhost:4318" }
+  }
+}
+```
+
+Each listed type still gets its config from the matching field (`sink.file`, `sink.otlp`, ...) exactly as in the single-sink case — `types` only changes *which* sinks are active, not how any one of them is configured. When set and non-empty, it takes priority over `sink.type` entirely; `type` is then ignored. An empty or absent `types` falls back to `sink.type`, so this is fully opt-in — an existing single-sink config needs no changes.
+
+Rules:
+
+- **Each type may appear once.** `["file", "file"]` is a config error, not two file sinks.
+- **Writes happen in the listed order**, sequentially, not concurrently — a slow sink (e.g. OTLP mid-retry) can delay the ones after it in the list, but never prevents them from being tried.
+- **A failure in one sink never stops the others.** Every listed sink gets the write attempt regardless of what happened to the ones before it. If *any* sink failed, `diagnyx log` still exits `1` (so scripts and monitoring can tell something needs attention) — but only after every sink got its turn, and each failure is reported on stderr individually, naming its sink type.
+- **`diagnyx query` reads from the first queryable sink in the list.** With `["otlp", "file"]`, querying transparently reads `file`. If none of the listed sinks are queryable (e.g. `["otlp", "loki"]`), `diagnyx query` fails with a clear error, the same as a single export-only sink would.
 
 ---
 
@@ -458,6 +487,20 @@ The value used for the `source` field when `--source` is not passed to `diagnyx 
 ```
 
 Run `diagnyx metrics serve` alongside your application to expose the counts at `http://localhost:9464/metrics`.
+
+### Fan-out: local file plus OTLP export
+
+```json
+{
+  "sink": {
+    "types": ["file", "otlp"],
+    "file": { "path": "~/.diagnyx/logs/diagnyx.log" },
+    "otlp": { "endpoint": "http://localhost:4318" }
+  }
+}
+```
+
+See [`sink.types`](#sinktypes-fan-out) for the ordering, failure-isolation, and `diagnyx query` rules.
 
 ---
 

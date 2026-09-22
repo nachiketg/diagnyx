@@ -1313,3 +1313,131 @@ jobs:
             -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM diagnyx_logs WHERE source='dx039-v1compat'" \
             -h -1 | tr -d ' \r\n')
           test "$COUNT" -eq 1
+
+      # ── DX-040: multi-sink fan-out ────────────────────────────────────────────
+
+      - name: DX-040 - start mock OTLP/HTTP collector
+        run: |
+          mkdir -p /tmp/dx040
+          cat > /tmp/dx040/mock_collector.py <<'PY'
+          import http.server
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  length = int(self.headers.get('Content-Length', 0))
+                  body = self.rfile.read(length)
+                  with open('/tmp/dx040/received.json', 'wb') as f:
+                      f.write(body)
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(b'{}')
+
+              def log_message(self, *args):
+                  pass
+
+          http.server.HTTPServer(('127.0.0.1', 4340), Handler).serve_forever()
+          PY
+          nohup python3 /tmp/dx040/mock_collector.py > /tmp/dx040/collector.log 2>&1 &
+          echo $! > /tmp/dx040/collector.pid
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null -X POST -d '{}' http://127.0.0.1:4340/v1/logs && break
+            sleep 0.25
+          done
+
+      - name: DX-040 - fan-out writes the same entry to every configured sink
+        run: |
+          printf '{"sink":{"types":["file","sqlite"],"file":{"path":"/tmp/dx040/fanout.log"},"sqlite":{"path":"/tmp/dx040/fanout.db"}}}' \
+            > /tmp/dx040/fanout.json
+          DIAGNYX_CONFIG=/tmp/dx040/fanout.json ./publish/diagnyx log \
+            --level warn --message "dx-040 fanout" --context '{"k":"v"}'
+          grep -q '"message":"dx-040 fanout"' /tmp/dx040/fanout.log
+          COUNT=$(sqlite3 /tmp/dx040/fanout.db "SELECT COUNT(*) FROM diagnyx_logs WHERE message='dx-040 fanout'")
+          test "$COUNT" -eq 1
+
+      - name: DX-040 - fan-out delivers to a network sink alongside a local one
+        run: |
+          rm -f /tmp/dx040/received.json
+          printf '{"sink":{"types":["file","otlp"],"file":{"path":"/tmp/dx040/network.log"},"otlp":{"endpoint":"http://127.0.0.1:4340"}}}' \
+            > /tmp/dx040/network.json
+          DIAGNYX_CONFIG=/tmp/dx040/network.json ./publish/diagnyx log \
+            --level info --message "dx-040 network fanout"
+          grep -q '"message":"dx-040 network fanout"' /tmp/dx040/network.log
+          test -s /tmp/dx040/received.json
+          jq -e '.resourceLogs[0].scopeLogs[0].logRecords[0].body.stringValue == "dx-040 network fanout"' \
+            /tmp/dx040/received.json
+
+      - name: DX-040 - a failure in one fanned-out sink does not block the others
+        run: |
+          printf '{"sink":{"types":["file","otlp"],"file":{"path":"/tmp/dx040/isolation-a.log"},"otlp":{"endpoint":"http://127.0.0.1:19999","maxRetries":0}}}' \
+            > /tmp/dx040/isolation-a.json
+          DIAGNYX_CONFIG=/tmp/dx040/isolation-a.json ./publish/diagnyx log \
+            --level error --message "dx-040 isolation a" 2>/tmp/dx040/isolation-a-err.txt && exit 1 || true
+          grep -q '"message":"dx-040 isolation a"' /tmp/dx040/isolation-a.log
+          grep -qi "otlp" /tmp/dx040/isolation-a-err.txt
+
+          # Order must not matter: the failing sink listed first still must not
+          # stop the working one after it.
+          printf '{"sink":{"types":["otlp","file"],"file":{"path":"/tmp/dx040/isolation-b.log"},"otlp":{"endpoint":"http://127.0.0.1:19999","maxRetries":0}}}' \
+            > /tmp/dx040/isolation-b.json
+          DIAGNYX_CONFIG=/tmp/dx040/isolation-b.json ./publish/diagnyx log \
+            --level error --message "dx-040 isolation b" 2>/dev/null && exit 1 || true
+          grep -q '"message":"dx-040 isolation b"' /tmp/dx040/isolation-b.log
+
+      - name: DX-040 - diagnyx query reads from the first queryable sink in a fan-out
+        run: |
+          printf '{"sink":{"types":["otlp","file"],"file":{"path":"/tmp/dx040/query.log"},"otlp":{"endpoint":"http://127.0.0.1:19999","maxRetries":0}}}' \
+            > /tmp/dx040/query.json
+          DIAGNYX_CONFIG=/tmp/dx040/query.json ./publish/diagnyx log \
+            --level info --message "dx-040 queryable" --source dx040-query 2>/dev/null || true
+          DIAGNYX_CONFIG=/tmp/dx040/query.json ./publish/diagnyx query --source dx040-query \
+            | jq -e '.message == "dx-040 queryable"'
+
+      - name: DX-040 - a fan-out with no queryable sink is a clear query error
+        run: |
+          printf '{"sink":{"types":["otlp","loki"],"otlp":{"endpoint":"http://127.0.0.1:19999"},"loki":{"endpoint":"http://127.0.0.1:19998"}}}' \
+            > /tmp/dx040/noquery.json
+          DIAGNYX_CONFIG=/tmp/dx040/noquery.json ./publish/diagnyx query \
+            2>/tmp/dx040/noquery-err.txt && exit 1 || true
+          grep -qi "none of the configured sinks" /tmp/dx040/noquery-err.txt
+
+      - name: DX-040 - invalid sink.types is a clear config error
+        run: |
+          printf '{"sink":{"types":["file","file"],"file":{"path":"/tmp/dx040/dup.log"}}}' \
+            > /tmp/dx040/dup.json
+          DIAGNYX_CONFIG=/tmp/dx040/dup.json ./publish/diagnyx log \
+            --level info --message "x" 2>/tmp/dx040/dup-err.txt && exit 1 || true
+          grep -qi "duplicate entries" /tmp/dx040/dup-err.txt
+
+          printf '{"sink":{"types":["file","bogus"],"file":{"path":"/tmp/dx040/bogus.log"}}}' \
+            > /tmp/dx040/bogus.json
+          DIAGNYX_CONFIG=/tmp/dx040/bogus.json ./publish/diagnyx log \
+            --level info --message "x" 2>/tmp/dx040/bogus-err.txt && exit 1 || true
+          grep -qi "unknown sink type 'bogus'" /tmp/dx040/bogus-err.txt
+
+      - name: DX-040 - an empty sink.types falls back to sink.type
+        run: |
+          printf '{"sink":{"types":[],"type":"file","file":{"path":"/tmp/dx040/empty-types.log"}}}' \
+            > /tmp/dx040/empty-types.json
+          DIAGNYX_CONFIG=/tmp/dx040/empty-types.json ./publish/diagnyx log \
+            --level info --message "dx-040 empty types fallback"
+          grep -q '"message":"dx-040 empty types fallback"' /tmp/dx040/empty-types.log
+
+      - name: DX-040 - metrics are counted once per log call, not once per fanned-out sink
+        run: |
+          printf '{"sink":{"types":["file","sqlite"],"file":{"path":"/tmp/dx040/metrics.log"},"sqlite":{"path":"/tmp/dx040/metrics.db"}},"metrics":{"enabled":true,"path":"/tmp/dx040/metrics-store.db"}}' \
+            > /tmp/dx040/metrics.json
+          DIAGNYX_CONFIG=/tmp/dx040/metrics.json ./publish/diagnyx log \
+            --level info --message "dx-040 metrics" --source dx040-metrics
+          DIAGNYX_CONFIG=/tmp/dx040/metrics.json ./publish/diagnyx metrics serve --port 9465 &
+          echo $! > /tmp/dx040/metrics-server.pid
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null http://localhost:9465/metrics && break
+            sleep 0.25
+          done
+          curl -s http://localhost:9465/metrics | grep -q 'source="dx040-metrics"} 1$'
+          kill "$(cat /tmp/dx040/metrics-server.pid)" 2>/dev/null || true
+
+      - name: DX-040 - stop mock OTLP collector
+        if: always()
+        run: kill "$(cat /tmp/dx040/collector.pid)" 2>/dev/null || true
