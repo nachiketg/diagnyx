@@ -24,7 +24,10 @@ Run `diagnyx init` to scaffold a default config file in the current directory.
   "sink": {
     "type": "file",
     "file": {
-      "path": "~/.diagnyx/logs/diagnyx.log"
+      "path": "~/.diagnyx/logs/diagnyx.log",
+      "maxAge": "7d",
+      "maxSizeBytes": 10485760,
+      "maxBackups": 5
     },
     "sqlite": {
       "path": "~/.diagnyx/diagnyx.db"
@@ -89,6 +92,27 @@ Only read when `sink.type` is `"file"`.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `path` | `string` | `~/.diagnyx/logs/diagnyx.log` | Path to the log file. `~` is expanded. Parent directories are created automatically if they don't exist. |
+| `maxAge` | `string` | unset | Rotate once the active file is at least this old, e.g. `"7d"`, `"24h"`. Same duration syntax as [`diagnyx query`](QUERY.md#time-values)'s `--since`/`--until` (units: `s`, `m`, `h`, `d`, `w`). No age-based rotation if unset. |
+| `maxSizeBytes` | `number` | unset | Rotate once the active file is at least this many bytes. Checked before each write, so the file can exceed this by up to one entry before the next write rotates it. No size-based rotation if unset. |
+| `maxBackups` | `number` | `5` | How many rotated files to keep. Only takes effect once `maxAge` and/or `maxSizeBytes` is set — with neither set, `maxBackups` does nothing. `0` keeps no rotated files at all. |
+
+**Rotation:** with `maxAge` and/or `maxSizeBytes` set, `diagnyx.log` rotates to `diagnyx.log.1` on the write that crosses the threshold, shifting older backups up (`.1` → `.2`, `.2` → `.3`, ...) and deleting anything past `maxBackups`. There's no background process — rotation is checked only when something logs, so on a quiet app an old file can sit past its `maxAge` until the next write.
+
+```json
+{
+  "sink": {
+    "type": "file",
+    "file": {
+      "path": "./logs/app.log",
+      "maxAge": "7d",
+      "maxSizeBytes": 10485760,
+      "maxBackups": 5
+    }
+  }
+}
+```
+
+`diagnyx query` only reads the active file — rotated backups aren't included in query results.
 
 ---
 

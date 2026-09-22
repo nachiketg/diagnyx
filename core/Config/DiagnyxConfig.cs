@@ -22,6 +22,29 @@ internal sealed class SinkConfig
 internal sealed class FileSinkConfig
 {
     public string Path { get; set; } = "~/.diagnyx/logs/diagnyx.log";
+
+    /// <summary>
+    /// Rotate once the active file is at least this old, e.g. "7d", "24h".
+    /// A duration string (see DurationParser), not a config type of its own,
+    /// so it reads the same as "diagnyx query"'s --since/--until. Unset (the
+    /// default) means no age-based rotation.
+    /// </summary>
+    public string? MaxAge { get; set; }
+
+    /// <summary>
+    /// Rotate once the active file is at least this many bytes. Checked
+    /// before each write, so the file can exceed this by up to one entry
+    /// before the next write rotates it. Unset (the default) means no
+    /// size-based rotation.
+    /// </summary>
+    public long? MaxSizeBytes { get; set; }
+
+    /// <summary>
+    /// How many rotated files to keep (diagnyx.log.1 .. diagnyx.log.N);
+    /// anything older is deleted. Only takes effect once MaxAge and/or
+    /// MaxSizeBytes turns rotation on. 0 keeps no rotated files at all.
+    /// </summary>
+    public int MaxBackups { get; set; } = 5;
 }
 
 internal sealed class SqliteSinkConfig

@@ -86,21 +86,10 @@ internal static class QueryCommand
     {
         timestamp = null;
 
-        var unit = value[^1];
-        if (value.Length >= 2 && "smhdw".Contains(unit)
-            && int.TryParse(value[..^1], NumberStyles.None, CultureInfo.InvariantCulture, out var amount)
-            && amount > 0)
+        if (DurationParser.TryParse(value, out var span))
         {
             try
             {
-                var span = unit switch
-                {
-                    's' => TimeSpan.FromSeconds(amount),
-                    'm' => TimeSpan.FromMinutes(amount),
-                    'h' => TimeSpan.FromHours(amount),
-                    'd' => TimeSpan.FromDays(amount),
-                    _   => TimeSpan.FromDays(7.0 * amount),
-                };
                 timestamp = TimestampUtil.ToTimestamp(DateTimeOffset.UtcNow - span);
                 return true;
             }
