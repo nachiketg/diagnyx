@@ -10,6 +10,17 @@ internal sealed class DiagnyxConfig
 internal sealed class SinkConfig
 {
     public string Type { get; set; } = "file";
+
+    /// <summary>
+    /// Fan-out: write to every listed sink instead of just Type. When set
+    /// and non-empty, this takes priority over Type entirely. Each type's
+    /// own config still comes from the matching field below (File, Otlp,
+    /// ...) -- Types only changes which of them are active, not how any one
+    /// of them is configured. Unset (the default) means single-sink,
+    /// exactly as before this existed.
+    /// </summary>
+    public List<string>? Types { get; set; }
+
     public FileSinkConfig? File { get; set; }
     public SqliteSinkConfig? Sqlite { get; set; }
     public RdbmsSinkConfig? Postgres { get; set; }

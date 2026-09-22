@@ -9,14 +9,17 @@ ISink
  ├── FileSink          (file, default; also IQueryableSink)
  ├── OtlpSink          (otlp; export-only)
  ├── LokiSink          (loki; export-only)
- └── RdbmsSink         (abstract base for all database engines; also IQueryableSink)
-      ├── SqliteSink
-      ├── PostgresSink
-      ├── MySqlSink
-      └── MssqlSink
+ ├── RdbmsSink         (abstract base for all database engines; also IQueryableSink)
+ │    ├── SqliteSink
+ │    ├── PostgresSink
+ │    ├── MySqlSink
+ │    └── MssqlSink
+ └── FanOutSink        (sink.types with 2+ entries; also IQueryableSink)
 ```
 
-`ISink` is the only contract `diagnyx log` knows about. `SinkFactory` maps a config `sink.type` value to a concrete instance. Everything else — connection management, table creation, parameter binding — lives inside the sink classes.
+`ISink` is the only contract `diagnyx log` knows about. `SinkFactory` maps a config `sink.type` value to a concrete instance -- or, with [`sink.types`](CONFIG.md#sinktypes-fan-out) set to more than one type, builds each of them and wraps them in `FanOutSink`, which just loops over the real sinks: it adds no config, table, or connection concerns of its own. Everything else — connection management, table creation, parameter binding — lives inside the individual sink classes.
+
+A new sink type needs nothing extra to support fan-out: any `ISink` works inside `FanOutSink` automatically, and implementing `IQueryableSink` (see [below](#making-a-sink-queryable)) makes it eligible to serve `diagnyx query` when it's one of several sinks fanned out to.
 
 ## ISink
 
