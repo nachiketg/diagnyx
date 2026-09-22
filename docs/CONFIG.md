@@ -2,6 +2,8 @@
 
 Diagnyx Core reads its configuration from a `diagnyx.config.json` file. This document describes every supported option, their defaults, and per-sink configuration.
 
+Setting up OTLP, Loki, or Grafana for the first time? [`docs/PHASE2_SETUP.md`](PHASE2_SETUP.md) is a walkthrough with copy-pasteable config; this page is the full reference.
+
 ---
 
 ## Config File Location

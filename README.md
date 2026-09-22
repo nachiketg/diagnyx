@@ -19,7 +19,8 @@ diagnyx/
 │   ├── CONFIG.md           # Config file format reference
 │   ├── EXTENDING_SINKS.md  # How to add a new sink engine
 │   ├── QUERY.md            # diagnyx query reference
-│   └── OTEL_MAPPING.md     # Field mapping onto the OpenTelemetry Logs Data Model
+│   ├── OTEL_MAPPING.md     # Field mapping onto the OpenTelemetry Logs Data Model
+│   └── PHASE2_SETUP.md     # Setup guide: OTLP, Loki & Grafana
 ├── dashboards/             # Starter Grafana dashboards for the loki sink
 ├── CONTRIBUTING.md
 └── LICENSE
@@ -113,6 +114,10 @@ See [docs/QUERY.md](docs/QUERY.md) for all flags and matching rules.
 ```
 
 The core CLI is a single cross-platform binary (Native AOT, no .NET runtime required). Language wrappers are thin shims that invoke the CLI — no logic lives in the wrappers.
+
+## Phase 2: OTLP, Loki & Grafana
+
+Ready to plug Diagnyx into an observability stack? [docs/PHASE2_SETUP.md](docs/PHASE2_SETUP.md) is a full walkthrough — export via OTLP, push to Loki, import the starter dashboard, and query from the CLI — with a local Docker sandbox if you don't already have somewhere to point it.
 
 ## Grafana Dashboard
 
