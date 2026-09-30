@@ -1562,3 +1562,33 @@ jobs:
           DIAGNYX_CONFIG=/tmp/dx042/query-regression.json ./publish/diagnyx query \
             --since bogus 2>/tmp/dx042/query-regression-err.txt && exit 1 || true
           grep -qi "invalid --since" /tmp/dx042/query-regression-err.txt
+
+      # ── DX-043: retrieval layer is sink-agnostic ──────────────────────────────
+      # LogRetriever only ever calls IQueryableSink.Query() -- no sink-type
+      # branching anywhere in the retrieval or ranking code -- so proving
+      # this is a matter of running the exact same DX-042 check library
+      # (already sink-parameterized) against the three engines DX-042's own
+      # CI didn't cover, on top of the file and SQLite coverage it already
+      # has. Same scenario, same expected entries/scores/order on every
+      # engine is exactly "equivalent results... whichever sink is active".
+
+      - name: DX-043 - relevance ranking produces equivalent results on PostgreSQL
+        run: |
+          printf '{"sink":{"type":"postgres","postgres":{"connectionString":"Host=localhost;Port=5432;Database=diagnyx_test;Username=postgres;Password=postgres"}}}' \
+            > /tmp/dx042/postgres.json
+          source /tmp/dx042/lib.sh
+          run_retrieve_checks postgres /tmp/dx042/postgres.json
+
+      - name: DX-043 - relevance ranking produces equivalent results on MySQL
+        run: |
+          printf '{"sink":{"type":"mysql","mysql":{"connectionString":"Server=127.0.0.1;Port=3306;Database=diagnyx_test;Uid=root;Pwd=mysql;"}}}' \
+            > /tmp/dx042/mysql.json
+          source /tmp/dx042/lib.sh
+          run_retrieve_checks mysql /tmp/dx042/mysql.json
+
+      - name: DX-043 - relevance ranking produces equivalent results on SQL Server
+        run: |
+          printf '{"sink":{"type":"mssql","mssql":{"connectionString":"Server=localhost,1433;Database=diagnyx_test;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True"}}}' \
+            > /tmp/dx042/mssql.json
+          source /tmp/dx042/lib.sh
+          run_retrieve_checks mssql /tmp/dx042/mssql.json
