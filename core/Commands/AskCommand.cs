@@ -1,22 +1,23 @@
 using System.Text;
 using Diagnyx.Core.Config;
 using Diagnyx.Core.Llm;
+using Diagnyx.Core.Logging;
 using Diagnyx.Core.Retrieval;
 using Diagnyx.Core.Sinks;
 
 namespace Diagnyx.Core.Commands;
 
 /// <summary>
-/// diagnyx ask "&lt;question&gt;"
+/// diagnyx ask "&lt;question&gt;" [--since &lt;time&gt;] [--until &lt;time&gt;] [--source &lt;name&gt;]
 ///
 /// Retrieves relevant entries (LogRetriever, same as "diagnyx retrieve"),
 /// sends them with the question to the configured LLM, and prints a
 /// natural-language answer followed by the timestamp and a short excerpt of
 /// each entry the model cited as evidence -- or, if it cited none, a clear
 /// UNSUPPORTED label instead of letting the answer read as verified fact.
-/// Deliberately no --since/--until/--source/--limit flags yet -- scoping ask
-/// queries is a separate, later concern; this always retrieves against the
-/// whole configured sink.
+/// --since/--until/--source narrow retrieval the same way they narrow
+/// "diagnyx query" -- same parsing (CliTimeParser), same matching rules.
+/// Deliberately no --limit flag yet -- RetrievalLimit stays fixed for now.
 /// </summary>
 internal static class AskCommand
 {
@@ -26,13 +27,47 @@ internal static class AskCommand
 
     internal static int Run(string[] args)
     {
-        if (args.Length == 0 || string.IsNullOrWhiteSpace(args[0]))
+        string? question = null, since = null, until = null, source = null;
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (!arg.StartsWith("--", StringComparison.Ordinal))
+            {
+                if (question is not null)
+                    return Fail("diagnyx ask takes a single question argument -- quote it if it contains spaces.");
+                question = arg;
+                continue;
+            }
+
+            if (arg is not ("--since" or "--until" or "--source"))
+                return Fail($"unknown option '{arg}'. Run 'diagnyx --help' for usage.");
+
+            if (i + 1 >= args.Length || args[i + 1].Length == 0)
+                return Fail($"{arg} requires a non-empty value.");
+
+            var value = args[++i];
+            switch (arg)
+            {
+                case "--since":
+                    if (!CliTimeParser.TryParse(value, out since))
+                        return Fail(CliTimeParser.InvalidMessage(arg, value));
+                    break;
+                case "--until":
+                    if (!CliTimeParser.TryParse(value, out until))
+                        return Fail(CliTimeParser.InvalidMessage(arg, value));
+                    break;
+                case "--source":
+                    source = value;
+                    break;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(question))
             return Fail("a question is required, e.g. diagnyx ask \"why did the payment service fail?\"");
 
-        if (args.Length > 1)
-            return Fail("diagnyx ask takes a single question argument -- quote it if it contains spaces.");
-
-        var question = args[0];
+        if (since is not null && until is not null && string.CompareOrdinal(since, until) > 0)
+            return Fail("--since must not be later than --until.");
 
         var config = ConfigLoader.Load();
 
@@ -53,7 +88,7 @@ internal static class AskCommand
                 "Queryable sinks: file, sqlite, postgres, mysql, mssql.");
 
         var candidates = LogRetriever.Retrieve(
-            queryable, new RetrievalRequest(question, Since: null, Until: null, Source: null, RetrievalLimit));
+            queryable, new RetrievalRequest(question, since, until, source, RetrievalLimit));
 
         if (candidates.Count == 0)
             return Fail("no log entries found to answer this question. Check your sink has data.");

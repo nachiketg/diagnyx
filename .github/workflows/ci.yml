@@ -1764,6 +1764,52 @@ jobs:
           echo "$OUTPUT" | grep -qx "UNSUPPORTED: no log entries were cited as evidence for this answer." \
             || { echo "an unstructured reply can't be verified, so it should be unsupported: $OUTPUT"; exit 1; }
 
+      # ── DX-046: scope ask queries by time range and source ─────────────────────
+      # Reuses DX-044's mock LLM server, ask.json, and log data.
+
+      - name: DX-046 - ask --source scopes retrieval consistently with diagnyx query
+        run: |
+          DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx log \
+            --level error --message "billing gateway timeout" --source billing
+
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did payment fail?" --source billing > /dev/null
+          jq -e '.messages[1].content | contains("billing gateway timeout")' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("checkout page rendered") | not' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("payment gateway timeout") | not' /tmp/dx044/received_request.json
+
+      - name: DX-046 - ask --since/--until scope retrieval and reject an inverted range
+        run: |
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did payment fail?" --until 2020-01-01 \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "no log entries found" /tmp/dx044/err.txt
+
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why?" --since 2h --until 1h \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qF -- "--since must not be later than --until" /tmp/dx044/err.txt
+
+      - name: DX-046 - ask validates --since/--until/--source input like diagnyx query does
+        run: |
+          export DIAGNYX_LLM_API_KEY=test-key-not-real
+
+          DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx ask "why?" --since notatime \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "invalid --since value" /tmp/dx044/err.txt
+
+          DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx ask "why?" --level error \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "unknown option" /tmp/dx044/err.txt
+
+          DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx ask "why?" --source \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "requires a non-empty value" /tmp/dx044/err.txt
+
+          DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx ask --source checkout "why did the payment service fail?" \
+            > /tmp/dx044/interleaved_output.txt
+          grep -q "Cited entries:" /tmp/dx044/interleaved_output.txt
+
       - name: DX-044 - stop mock LLM server
         if: always()
         run: kill "$(cat /tmp/dx044/collector.pid)" 2>/dev/null || true
