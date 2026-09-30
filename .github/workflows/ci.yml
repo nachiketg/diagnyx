@@ -1441,3 +1441,124 @@ jobs:
       - name: DX-040 - stop mock OTLP collector
         if: always()
         run: kill "$(cat /tmp/dx040/collector.pid)" 2>/dev/null || true
+
+      # ── DX-042: log retrieval layer (relevance ranking) for AI queries ───────
+      # Full cross-engine equivalence (postgres/mysql/mssql) is DX-043's own
+      # ticket; these steps cover the file and SQLite sinks, which is enough
+      # to prove the ranking mechanism itself -- it calls the exact same
+      # IQueryableSink.Query() diagnyx query already uses on every engine.
+
+      - name: DX-042 - write the retrieve check library
+        run: |
+          mkdir -p /tmp/dx042
+          cat > /tmp/dx042/lib.sh <<'LIB'
+          DX="${DX:-./publish/diagnyx}"
+
+          fail() { echo "FAIL [$SINK]: $*"; exit 1; }
+
+          # run_retrieve_checks <sink-name> <config-file>
+          run_retrieve_checks() {
+            SINK="$1"; CFG="$2"
+            export DIAGNYX_CONFIG="$CFG"
+
+            "$DX" log --level info  --message "app startup complete"            --source dx042-svc
+            "$DX" log --level warn  --message "cache miss on session lookup"    --source dx042-svc
+            "$DX" log --level error --message "payment gateway timeout"         --source dx042-svc --context '{"orderId":"ord-1"}'
+            "$DX" log --level info  --message "checkout page rendered"          --source dx042-svc
+            "$DX" log --level error --message "checkout failed: payment timeout" --source dx042-svc --context '{"orderId":"ord-2"}'
+            "$DX" log --level info  --message "unrelated entry, different source" --source dx042-other
+
+            local out
+            out=$("$DX" retrieve --question "payment timeout during checkout" --source dx042-svc)
+
+            # Ranked by term overlap, most relevant first -- not chronological.
+            echo "$out" | jq -s -e '.[0].message == "checkout failed: payment timeout" and .[0].score == 3' > /dev/null \
+              || fail "top result should be the 3-term match"
+            echo "$out" | jq -s -e '.[1].message == "payment gateway timeout" and .[1].score == 2' > /dev/null \
+              || fail "second result should be the 2-term match"
+            echo "$out" | jq -s -e '.[2].message == "checkout page rendered" and .[2].score == 1' > /dev/null \
+              || fail "third result should be the 1-term match"
+
+            # --source scoped the candidate pool: the other-source entry never appears.
+            echo "$out" | jq -s -e 'map(.source) | all(. == "dx042-svc")' > /dev/null \
+              || fail "results should be scoped to --source"
+            echo "$out" | jq -s 'length' | grep -qx 5 \
+              || fail "expected exactly 5 candidates for dx042-svc"
+
+            # --limit bounds the ranked output.
+            local limited
+            limited=$("$DX" retrieve --question "payment timeout during checkout" --source dx042-svc --limit 2 | jq -s 'length')
+            [ "$limited" = "2" ] || fail "--limit should cap the ranked output, got $limited"
+
+            # Context text contributes to the score, not just the message.
+            "$DX" log --level error --message "request failed" --source dx042-ctx --context '{"customer":"acmecorp"}'
+            "$DX" log --level error --message "request failed" --source dx042-ctx --context '{"customer":"globex"}'
+            echo "$("$DX" retrieve --question "acmecorp issue" --source dx042-ctx)" \
+              | jq -s -e '.[0].context.customer == "acmecorp" and .[0].score >= 1' > /dev/null \
+              || fail "context text should contribute to relevance score"
+
+            # A question with no term overlap falls back to recency, not an error.
+            local newest
+            newest=$("$DX" retrieve --question "the and for" --source dx042-svc --limit 1 | jq -r '.message')
+            [ "$newest" = "checkout failed: payment timeout" ] || fail "no-overlap question should fall back to most-recent-first"
+
+            echo "OK [$SINK]: retrieve checks passed"
+          }
+
+          # expect_error <stderr-pattern> <config-file> <extra args...>
+          expect_error() {
+            local pattern="$1" cfg="$2"; shift 2
+            local err
+            if err=$(DIAGNYX_CONFIG="$cfg" "$DX" retrieve "$@" 2>&1 >/dev/null); then
+              fail "retrieve $* should have failed"
+            fi
+            printf '%s' "$err" | grep -qi -- "$pattern" || fail "retrieve $* failed with an unexpected message: $err"
+          }
+
+          # run_retrieve_input_checks <config-file>
+          run_retrieve_input_checks() {
+            SINK="input"
+            local cfg="$1"
+
+            expect_error "--question is required"  "$cfg"
+            expect_error "invalid --since"          "$cfg" --question x --since bogus
+            expect_error "not be later than"        "$cfg" --question x --since 2099-01-01 --until 2000-01-01
+            expect_error "positive integer"         "$cfg" --question x --limit 0
+            expect_error "requires a non-empty"     "$cfg" --question
+
+            printf '{"sink":{"type":"otlp","otlp":{"endpoint":"http://127.0.0.1:19999"}}}' > /tmp/dx042/otlp.json
+            expect_error "write-only" /tmp/dx042/otlp.json --question x
+
+            echo "OK: retrieve input and error checks passed"
+          }
+          LIB
+
+      - name: DX-042 - relevance ranking works on the file sink
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx042/file.log"}}}' > /tmp/dx042/file.json
+          source /tmp/dx042/lib.sh
+          run_retrieve_checks file /tmp/dx042/file.json
+
+      - name: DX-042 - relevance ranking works on the SQLite sink
+        run: |
+          printf '{"sink":{"type":"sqlite","sqlite":{"path":"/tmp/dx042/sqlite.db"}}}' > /tmp/dx042/sqlite.json
+          source /tmp/dx042/lib.sh
+          run_retrieve_checks sqlite /tmp/dx042/sqlite.json
+
+      - name: DX-042 - retrieve validates its input and reports errors clearly
+        run: |
+          source /tmp/dx042/lib.sh
+          run_retrieve_input_checks /tmp/dx042/file.json
+
+      - name: DX-042 - diagnyx query is unaffected by the shared CliTimeParser refactor
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx042/query-regression.log"}}}' \
+            > /tmp/dx042/query-regression.json
+          DIAGNYX_CONFIG=/tmp/dx042/query-regression.json ./publish/diagnyx log \
+            --level error --message "still works" --source dx042-regress
+          DIAGNYX_CONFIG=/tmp/dx042/query-regression.json ./publish/diagnyx query \
+            --since 1h --level error --source dx042-regress \
+            | jq -e '.message == "still works"'
+          DIAGNYX_CONFIG=/tmp/dx042/query-regression.json ./publish/diagnyx query \
+            --since bogus 2>/tmp/dx042/query-regression-err.txt && exit 1 || true
+          grep -qi "invalid --since" /tmp/dx042/query-regression-err.txt

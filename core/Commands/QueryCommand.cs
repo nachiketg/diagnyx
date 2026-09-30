@@ -9,16 +9,6 @@ internal static class QueryCommand
 {
     private const int DefaultLimit = 100;
 
-    // ISO 8601 only: locale-style dates like 01/02/2026 are ambiguous.
-    // K accepts "Z", "+hh:mm", or no zone (treated as UTC).
-    private static readonly string[] AbsoluteFormats =
-    [
-        "yyyy-MM-dd",
-        "yyyy-MM-dd'T'HH:mmK",
-        "yyyy-MM-dd'T'HH:mm:ssK",
-        "yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK",
-    ];
-
     internal static int Run(string[] args)
     {
         string? since = null, until = null, level = null, source = null, contains = null;
@@ -39,12 +29,12 @@ internal static class QueryCommand
             switch (flag)
             {
                 case "--since":
-                    if (!TryParseTime(value, out since))
-                        return Fail(InvalidTime(flag, value));
+                    if (!CliTimeParser.TryParse(value, out since))
+                        return Fail(CliTimeParser.InvalidMessage(flag, value));
                     break;
                 case "--until":
-                    if (!TryParseTime(value, out until))
-                        return Fail(InvalidTime(flag, value));
+                    if (!CliTimeParser.TryParse(value, out until))
+                        return Fail(CliTimeParser.InvalidMessage(flag, value));
                     break;
                 case "--level":
                     if (!LogLevel.IsValid(value))
@@ -79,40 +69,6 @@ internal static class QueryCommand
 
         return 0;
     }
-
-    // Accepts a relative duration ("30m", "2h", "7d" -- units s, m, h, d, w),
-    // meaning that long before now, or an absolute ISO 8601 timestamp.
-    private static bool TryParseTime(string value, out string? timestamp)
-    {
-        timestamp = null;
-
-        if (DurationParser.TryParse(value, out var span))
-        {
-            try
-            {
-                timestamp = TimestampUtil.ToTimestamp(DateTimeOffset.UtcNow - span);
-                return true;
-            }
-            catch (Exception ex) when (ex is OverflowException or ArgumentOutOfRangeException)
-            {
-                return false; // Duration reaches before year 1.
-            }
-        }
-
-        if (DateTimeOffset.TryParseExact(
-                value, AbsoluteFormats, CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var absolute))
-        {
-            timestamp = TimestampUtil.ToTimestamp(absolute);
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string InvalidTime(string flag, string value) =>
-        $"invalid {flag} value '{value}'. Use a relative duration like 30m, 2h or 7d " +
-        "(units: s, m, h, d, w) or an ISO 8601 timestamp like 2026-09-21T10:00:00Z.";
 
     private static int Fail(string message)
     {

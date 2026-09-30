@@ -13,9 +13,24 @@ internal static class LogEntryJson
     public static string Serialize(LogEntry entry)
     {
         using var ms = new MemoryStream();
-        using var writer = new Utf8JsonWriter(ms);
+        using (var writer = new Utf8JsonWriter(ms))
+        {
+            writer.WriteStartObject();
+            WriteFields(writer, entry);
+            writer.WriteEndObject();
+        }
 
-        writer.WriteStartObject();
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    /// <summary>
+    /// Writes the seven canonical fields as properties on an already-open
+    /// JSON object -- for a caller (e.g. "diagnyx retrieve") that needs to
+    /// add its own fields to the same object rather than get back a
+    /// complete, standalone one from <see cref="Serialize"/>.
+    /// </summary>
+    public static void WriteFields(Utf8JsonWriter writer, LogEntry entry)
+    {
         writer.WriteString("timestamp", entry.Timestamp);
         writer.WriteString("level", entry.Level);
         writer.WriteString("message", entry.Message);
@@ -36,11 +51,6 @@ internal static class LogEntryJson
             writer.WriteNull("spanId");
         else
             writer.WriteString("spanId", entry.SpanId);
-
-        writer.WriteEndObject();
-        writer.Flush();
-
-        return Encoding.UTF8.GetString(ms.ToArray());
     }
 
     /// <summary>
