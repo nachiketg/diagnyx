@@ -1,6 +1,6 @@
 # Asking Questions About Your Logs
 
-`diagnyx ask` investigates an incident in natural language from the terminal: it retrieves the log entries most relevant to your question, sends them to a configured LLM along with the question, and prints a plain-text answer.
+`diagnyx ask` investigates an incident in natural language from the terminal: it retrieves the log entries most relevant to your question, sends them to a configured LLM along with the question, and prints a plain-text answer followed by the entries that actually back it up — so you can verify the answer instead of trusting it blindly.
 
 ```bash
 diagnyx ask "why did the payment service fail at 3pm?"
@@ -30,18 +30,26 @@ export DIAGNYX_LLM_API_KEY=sk-...
 ## How it works
 
 1. **Retrieve.** The question is handed to the same [retrieval layer](RETRIEVAL.md) `diagnyx retrieve` uses — up to 20 log entries, ranked by relevance to the question, pulled from whichever sink is configured.
-2. **Ask.** The question and the retrieved entries (numbered, with timestamp, level, source, message, and context) are sent to the configured LLM in one chat completion request, with a system message instructing it to answer only from what it was given.
-3. **Print.** The model's reply is printed as plain text to stdout — nothing else, so it reads like an answer, not a log line.
+2. **Ask.** The question and the retrieved entries (numbered, with timestamp, level, source, message, and context) are sent to the configured LLM in one chat completion request. The system message instructs it to answer only from what it was given, and to respond as `{"answer": "...", "citedEntries": [...]}` — the entry numbers it actually relied on.
+3. **Print.** The answer is printed as plain text, followed by a blank line and either:
+   - a `Cited entries:` list with the timestamp and a short excerpt of each entry named in `citedEntries` (entry numbers outside the retrieved range are dropped rather than trusted), or
+   - `UNSUPPORTED: no log entries were cited as evidence for this answer.`, if `citedEntries` was empty, missing, or every number in it was invalid.
 
 No retrieval means no LLM call: if nothing relevant is found, `ask` fails with a clear message instead of spending a request on empty context.
+
+Not every OpenAI-compatible endpoint honors structured JSON output. If a reply can't be parsed as the `{"answer", "citedEntries"}` shape, `ask` falls back to printing the raw reply as the answer with no citations — labeled `UNSUPPORTED`, since an answer that can't be verified against specific entries shouldn't read as one that has been.
 
 ## Example
 
 ```bash
 $ diagnyx ask "why did checkout fail?"
-The checkout failures were caused by a payment gateway timeout (entry 2), which
-then caused the checkout request itself to fail (entry 5). Both occurred within
-the same few seconds and reference order ord-2.
+The checkout failures were caused by a payment gateway timeout, which then
+caused the checkout request itself to fail. Both occurred within the same
+few seconds and reference order ord-2.
+
+Cited entries:
+  [2] 2026-09-30T15:04:11.203Z -- payment gateway timeout after 30s
+  [5] 2026-09-30T15:04:11.412Z -- checkout failed: payment timeout (order ord-2)
 ```
 
 (Illustrative — the actual wording depends on your configured model and your logs.)
