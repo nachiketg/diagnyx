@@ -20,6 +20,7 @@ diagnyx/
 │   ├── EXTENDING_SINKS.md  # How to add a new sink engine
 │   ├── QUERY.md            # diagnyx query reference
 │   ├── RETRIEVAL.md        # diagnyx retrieve reference (relevance ranking for AI grounding)
+│   ├── ASK.md              # diagnyx ask reference (LLM-backed natural-language answers)
 │   ├── OTEL_MAPPING.md     # Field mapping onto the OpenTelemetry Logs Data Model
 │   └── PHASE2_SETUP.md     # Setup guide: OTLP, Loki & Grafana
 ├── dashboards/             # Starter Grafana dashboards for the loki sink
@@ -88,6 +89,8 @@ diagnyx query --since 1h --level error --source my-api --contains timeout
 See [docs/QUERY.md](docs/QUERY.md) for all flags and matching rules.
 
 Looking for what's *relevant* to a question rather than an exact filter match? `diagnyx retrieve` ranks entries by relevance instead of returning them chronologically — the grounding step for AI-assisted analysis, with no LLM call and no network dependency. See [docs/RETRIEVAL.md](docs/RETRIEVAL.md).
+
+Want an actual answer, not just the entries? `diagnyx ask "why did the payment service fail?"` retrieves the relevant entries and sends them with your question to a configured LLM, printing a natural-language answer. Set up an LLM (any OpenAI-compatible endpoint — hosted or self-hosted) in `diagnyx.config.json`; see [docs/ASK.md](docs/ASK.md).
 
 ## Architecture
 

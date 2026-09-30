@@ -1592,3 +1592,112 @@ jobs:
             > /tmp/dx042/mssql.json
           source /tmp/dx042/lib.sh
           run_retrieve_checks mssql /tmp/dx042/mssql.json
+
+      # ── DX-044: diagnyx ask ───────────────────────────────────────────────────
+      # No real LLM API is called here or anywhere in this repo's CI -- a mock
+      # server standing in for any OpenAI-compatible endpoint, matching how
+      # OTLP/Loki collectors are mocked elsewhere in this file.
+
+      - name: DX-044 - start mock OpenAI-compatible LLM server
+        run: |
+          mkdir -p /tmp/dx044
+          cat > /tmp/dx044/mock_llm.py <<'PY'
+          import http.server
+          import json
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  length = int(self.headers.get('Content-Length', 0))
+                  body = self.rfile.read(length)
+                  with open('/tmp/dx044/received_request.json', 'wb') as f:
+                      f.write(body)
+                  with open('/tmp/dx044/received_auth.txt', 'w') as f:
+                      f.write(self.headers.get('Authorization', ''))
+                  with open('/tmp/dx044/received_path.txt', 'w') as f:
+                      f.write(self.path)
+
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(json.dumps({
+                      "choices": [{"message": {"role": "assistant", "content": "Payment gateway timeout caused the checkout failure."}}]
+                  }).encode())
+
+              def log_message(self, *args):
+                  pass
+
+          http.server.HTTPServer(('127.0.0.1', 4410), Handler).serve_forever()
+          PY
+          nohup python3 /tmp/dx044/mock_llm.py > /tmp/dx044/collector.log 2>&1 &
+          echo $! > /tmp/dx044/collector.pid
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null -X POST -d '{}' http://127.0.0.1:4410/chat/completions && break
+            sleep 0.25
+          done
+
+      - name: DX-044 - ask retrieves relevant entries and prints the LLM's answer
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx044/ask.log"}},"llm":{"baseUrl":"http://127.0.0.1:4410","model":"test-model"}}' \
+            > /tmp/dx044/ask.json
+          DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx log \
+            --level error --message "payment gateway timeout" --source checkout --context '{"orderId":"ord-1"}'
+          DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx log \
+            --level info --message "checkout page rendered" --source checkout
+
+          ANSWER=$(DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?")
+          [ "$ANSWER" = "Payment gateway timeout caused the checkout failure." ] \
+            || { echo "unexpected answer: $ANSWER"; exit 1; }
+
+          test "$(cat /tmp/dx044/received_path.txt)" = "/chat/completions"
+          test "$(cat /tmp/dx044/received_auth.txt)" = "Bearer test-key-not-real"
+          jq -e '.model == "test-model"' /tmp/dx044/received_request.json
+          jq -e '.messages[0].role == "system"' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("why did the payment service fail?")' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("payment gateway timeout")' /tmp/dx044/received_request.json
+
+      - name: DX-044 - ask validates its input and reports config errors clearly
+        run: |
+          export DIAGNYX_LLM_API_KEY=test-key-not-real
+
+          DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx ask \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "a question is required" /tmp/dx044/err.txt
+
+          DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx ask why did it fail \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "single question argument" /tmp/dx044/err.txt
+
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx044/noillm.log"}}}' > /tmp/dx044/noillm.json
+          DIAGNYX_CONFIG=/tmp/dx044/noillm.json ./publish/diagnyx ask "why?" \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "no LLM is configured" /tmp/dx044/err.txt
+
+          printf '{"sink":{"type":"otlp","otlp":{"endpoint":"http://127.0.0.1:19999"}},"llm":{"baseUrl":"http://127.0.0.1:4410","model":"x"}}' \
+            > /tmp/dx044/otlp.json
+          DIAGNYX_CONFIG=/tmp/dx044/otlp.json ./publish/diagnyx ask "why?" \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "write-only" /tmp/dx044/err.txt
+
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx044/empty.log"}},"llm":{"baseUrl":"http://127.0.0.1:4410","model":"x"}}' \
+            > /tmp/dx044/empty.json
+          DIAGNYX_CONFIG=/tmp/dx044/empty.json ./publish/diagnyx ask "why?" \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "no log entries found" /tmp/dx044/err.txt
+
+          unset DIAGNYX_LLM_API_KEY
+          DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx ask "why?" \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "DIAGNYX_LLM_API_KEY" /tmp/dx044/err.txt
+
+      - name: DX-044 - ask surfaces LLM connection and response failures clearly
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx044/ask.log"}},"llm":{"baseUrl":"http://127.0.0.1:19999","model":"x"}}' \
+            > /tmp/dx044/unreachable.json
+          DIAGNYX_LLM_API_KEY=x DIAGNYX_CONFIG=/tmp/dx044/unreachable.json ./publish/diagnyx ask "why?" \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "LLM request failed" /tmp/dx044/err.txt
+
+      - name: DX-044 - stop mock LLM server
+        if: always()
+        run: kill "$(cat /tmp/dx044/collector.pid)" 2>/dev/null || true

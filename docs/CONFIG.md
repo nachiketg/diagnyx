@@ -71,6 +71,10 @@ The seven-field [log entry schema](SCHEMA.md) itself hasn't changed either — `
     "enabled": false,
     "path": "~/.diagnyx/metrics.db"
   },
+  "llm": {
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini"
+  },
   "defaults": {
     "source": "app"
   }
@@ -354,6 +358,32 @@ Any other path returns `404`. The server runs until stopped (Ctrl+C, or the proc
 
 ---
 
+### `llm`
+
+**Status: implemented (v1)**
+
+Configures [`diagnyx ask`](ASK.md). Both fields are required to use `ask` at all — there's no default provider or model, since a generic OpenAI-compatible endpoint has no universally sensible one.
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `baseUrl` | `string` | Yes | Base URL of an OpenAI-compatible chat completions API, e.g. `https://api.openai.com/v1`. `/chat/completions` is appended automatically unless the URL already ends with it. |
+| `model` | `string` | Yes | Model name exactly as the configured endpoint expects it, e.g. `gpt-4o-mini`. |
+
+```json
+{
+  "llm": {
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini"
+  }
+}
+```
+
+**The API key is never a config field.** Set the `DIAGNYX_LLM_API_KEY` environment variable instead — that way it's never something that could end up committed inside `diagnyx.config.json`, unlike an RDBMS connection string. `diagnyx ask` fails immediately with a clear error if it's unset.
+
+"Generic OpenAI-compatible" means any endpoint that speaks the same request/response shape: OpenAI itself, and many other hosted providers and self-hosted/local runtimes (Ollama, LM Studio, ...) that offer OpenAI-compatible chat completions. Point `baseUrl` at whichever one you're running.
+
+---
+
 ### `defaults.source`
 
 **Type:** `string`  
@@ -489,6 +519,29 @@ The value used for the `source` field when `--source` is not passed to `diagnyx 
 ```
 
 Run `diagnyx metrics serve` alongside your application to expose the counts at `http://localhost:9464/metrics`.
+
+### With `diagnyx ask` enabled
+
+`llm` is also independent of `sink` — `ask` retrieves from whichever sink is configured, same as `query` and `retrieve`:
+
+```json
+{
+  "sink": {
+    "type": "file"
+  },
+  "llm": {
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini"
+  }
+}
+```
+
+```bash
+export DIAGNYX_LLM_API_KEY=sk-...
+diagnyx ask "why did the payment service fail at 3pm?"
+```
+
+See [docs/ASK.md](ASK.md) for details.
 
 ### Fan-out: local file plus OTLP export
 
