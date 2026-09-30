@@ -1,3 +1,4 @@
+using System.Text;
 using Diagnyx.Core.Config;
 using Diagnyx.Core.Llm;
 using Diagnyx.Core.Retrieval;
@@ -10,9 +11,12 @@ namespace Diagnyx.Core.Commands;
 ///
 /// Retrieves relevant entries (LogRetriever, same as "diagnyx retrieve"),
 /// sends them with the question to the configured LLM, and prints a
-/// natural-language answer. Deliberately no --since/--until/--source/--limit
-/// flags yet -- scoping ask queries is a separate, later concern; this
-/// always retrieves against the whole configured sink.
+/// natural-language answer followed by the timestamp and a short excerpt of
+/// each entry the model cited as evidence -- or, if it cited none, a clear
+/// UNSUPPORTED label instead of letting the answer read as verified fact.
+/// Deliberately no --since/--until/--source/--limit flags yet -- scoping ask
+/// queries is a separate, later concern; this always retrieves against the
+/// whole configured sink.
 /// </summary>
 internal static class AskCommand
 {
@@ -56,18 +60,58 @@ internal static class AskCommand
 
         var userMessage = PromptBuilder.BuildUserMessage(question, candidates);
 
-        string answer;
+        AskResult result;
         try
         {
-            answer = LlmClient.Ask(llm.BaseUrl, llm.Model, apiKey, userMessage);
+            result = LlmClient.Ask(llm.BaseUrl, llm.Model, apiKey, userMessage);
         }
         catch (Exception ex)
         {
             return Fail($"LLM request failed: {ex.Message}");
         }
 
-        Console.WriteLine(answer);
+        Console.WriteLine(result.Answer);
+        Console.WriteLine();
+        Console.WriteLine(FormatCitations(result.CitedEntryNumbers, candidates));
         return 0;
+    }
+
+    /// <summary>
+    /// Entry numbers are 1-based and refer back to PromptBuilder's numbering
+    /// of "candidates". Numbers outside that range (a model hallucinating a
+    /// citation) are dropped rather than trusted; duplicates collapse to one
+    /// listing per entry. If nothing valid is left, the answer is labeled
+    /// unsupported -- an unverifiable citation is no citation at all.
+    /// </summary>
+    private static string FormatCitations(IReadOnlyList<int> citedEntryNumbers, IReadOnlyList<RankedEntry> candidates)
+    {
+        var cited = citedEntryNumbers
+            .Distinct()
+            .Where(number => number >= 1 && number <= candidates.Count)
+            .OrderBy(number => number)
+            .ToArray();
+
+        if (cited.Length == 0)
+            return "UNSUPPORTED: no log entries were cited as evidence for this answer.";
+
+        var sb = new StringBuilder("Cited entries:");
+        foreach (var number in cited)
+        {
+            var entry = candidates[number - 1].Entry;
+            sb.Append('\n').Append("  [").Append(number).Append("] ")
+              .Append(entry.Timestamp).Append(" -- ").Append(Excerpt(entry.Message));
+        }
+
+        return sb.ToString();
+    }
+
+    private const int ExcerptMaxLength = 80;
+
+    private static string Excerpt(string message)
+    {
+        return message.Length <= ExcerptMaxLength
+            ? message
+            : string.Concat(message.AsSpan(0, ExcerptMaxLength - 3), "...");
     }
 
     private static int Fail(string message)

@@ -1604,6 +1604,18 @@ jobs:
           cat > /tmp/dx044/mock_llm.py <<'PY'
           import http.server
           import json
+          import os
+
+          # DX-045: the response content is configurable via a file, so
+          # different test steps can make the mock return a citation-bearing
+          # answer, an explicitly uncited one, an out-of-range citation, or
+          # plain (non-JSON) prose -- without restarting the server. Absent
+          # the file, this is the same canned answer DX-044 always returned.
+          RESPONSE_FILE = '/tmp/dx044/next_content.txt'
+          DEFAULT_CONTENT = json.dumps({
+              "answer": "Payment gateway timeout caused the checkout failure.",
+              "citedEntries": [1],
+          })
 
           class Handler(http.server.BaseHTTPRequestHandler):
               def do_POST(self):
@@ -1616,11 +1628,17 @@ jobs:
                   with open('/tmp/dx044/received_path.txt', 'w') as f:
                       f.write(self.path)
 
+                  if os.path.exists(RESPONSE_FILE):
+                      with open(RESPONSE_FILE, 'r') as f:
+                          content = f.read()
+                  else:
+                      content = DEFAULT_CONTENT
+
                   self.send_response(200)
                   self.send_header('Content-Type', 'application/json')
                   self.end_headers()
                   self.wfile.write(json.dumps({
-                      "choices": [{"message": {"role": "assistant", "content": "Payment gateway timeout caused the checkout failure."}}]
+                      "choices": [{"message": {"role": "assistant", "content": content}}]
                   }).encode())
 
               def log_message(self, *args):
@@ -1644,10 +1662,10 @@ jobs:
           DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx log \
             --level info --message "checkout page rendered" --source checkout
 
-          ANSWER=$(DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+          OUTPUT=$(DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
             ./publish/diagnyx ask "why did the payment service fail?")
-          [ "$ANSWER" = "Payment gateway timeout caused the checkout failure." ] \
-            || { echo "unexpected answer: $ANSWER"; exit 1; }
+          [ "$(echo "$OUTPUT" | head -1)" = "Payment gateway timeout caused the checkout failure." ] \
+            || { echo "unexpected answer: $OUTPUT"; exit 1; }
 
           test "$(cat /tmp/dx044/received_path.txt)" = "/chat/completions"
           test "$(cat /tmp/dx044/received_auth.txt)" = "Bearer test-key-not-real"
@@ -1697,6 +1715,54 @@ jobs:
           DIAGNYX_LLM_API_KEY=x DIAGNYX_CONFIG=/tmp/dx044/unreachable.json ./publish/diagnyx ask "why?" \
             2>/tmp/dx044/err.txt && exit 1 || true
           grep -qi "LLM request failed" /tmp/dx044/err.txt
+
+      # ── DX-045: cite source log entries in ask responses ───────────────────────
+      # Reuses DX-044's mock LLM server (still running) and its ask.json/log
+      # data, reconfiguring the mock's response content per scenario via
+      # /tmp/dx044/next_content.txt.
+
+      - name: DX-045 - ask lists the timestamp and excerpt of each cited entry
+        run: |
+          OUTPUT=$(DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?")
+          echo "$OUTPUT" | grep -qx "Cited entries:" \
+            || { echo "expected a citations header: $OUTPUT"; exit 1; }
+          echo "$OUTPUT" | grep -qE '^  \[1\] .+ -- payment gateway timeout$' \
+            || { echo "expected entry 1's timestamp and excerpt: $OUTPUT"; exit 1; }
+          jq -e '.response_format.type == "json_object"' /tmp/dx044/received_request.json
+
+      - name: DX-045 - ask labels an answer unsupported when nothing is cited
+        run: |
+          printf '%s' '{"answer": "I could not determine the cause from the given logs.", "citedEntries": []}' \
+            > /tmp/dx044/next_content.txt
+          OUTPUT=$(DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?")
+          rm -f /tmp/dx044/next_content.txt
+          echo "$OUTPUT" | grep -q "^I could not determine the cause" \
+            || { echo "expected the model's answer to still be printed: $OUTPUT"; exit 1; }
+          echo "$OUTPUT" | grep -qx "UNSUPPORTED: no log entries were cited as evidence for this answer." \
+            || { echo "expected an unsupported label: $OUTPUT"; exit 1; }
+
+      - name: DX-045 - ask treats a hallucinated citation number as unsupported
+        run: |
+          printf '%s' '{"answer": "This is grounded in entry 99.", "citedEntries": [99]}' \
+            > /tmp/dx044/next_content.txt
+          OUTPUT=$(DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?")
+          rm -f /tmp/dx044/next_content.txt
+          echo "$OUTPUT" | grep -qx "UNSUPPORTED: no log entries were cited as evidence for this answer." \
+            || { echo "an out-of-range citation number should not be trusted as evidence: $OUTPUT"; exit 1; }
+
+      - name: DX-045 - ask falls back to unsupported when the endpoint ignores structured output
+        run: |
+          printf '%s' 'Plain prose answer, not JSON.' > /tmp/dx044/next_content.txt
+          OUTPUT=$(DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?")
+          rm -f /tmp/dx044/next_content.txt
+          echo "$OUTPUT" | grep -qx "Plain prose answer, not JSON." \
+            || { echo "expected the raw reply to be used as the answer: $OUTPUT"; exit 1; }
+          echo "$OUTPUT" | grep -qx "UNSUPPORTED: no log entries were cited as evidence for this answer." \
+            || { echo "an unstructured reply can't be verified, so it should be unsupported: $OUTPUT"; exit 1; }
 
       - name: DX-044 - stop mock LLM server
         if: always()

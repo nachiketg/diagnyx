@@ -15,11 +15,11 @@ internal static class LlmClient
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
-    /// <summary>Sends one chat completion request and returns the assistant's reply text.</summary>
+    /// <summary>Sends one chat completion request and returns the assistant's answer and citations.</summary>
     /// <exception cref="InvalidOperationException">
     /// The request failed, or the response wasn't a recognizable chat completion.
     /// </exception>
-    public static string Ask(string baseUrl, string model, string apiKey, string userMessage)
+    public static AskResult Ask(string baseUrl, string model, string apiKey, string userMessage)
     {
         var url = BuildUrl(baseUrl);
         var body = BuildRequestBody(model, userMessage);
@@ -39,7 +39,7 @@ internal static class LlmClient
                 $"{(int)response.StatusCode} {response.ReasonPhrase}" +
                 (string.IsNullOrWhiteSpace(responseText) ? "" : $" -- {responseText}"));
 
-        return ExtractAnswer(responseText);
+        return ExtractResult(responseText);
     }
 
     private static HttpResponseMessage Send(HttpClient client, HttpRequestMessage request)
@@ -84,14 +84,25 @@ internal static class LlmClient
             writer.WriteEndObject();
 
             writer.WriteEndArray();
+
+            // Asks the endpoint to return valid JSON for the {"answer", "citedEntries"}
+            // shape the system message describes. Widely supported among
+            // OpenAI-compatible endpoints, but not universal -- ExtractResult
+            // falls back gracefully if a given endpoint ignores it.
+            writer.WritePropertyName("response_format");
+            writer.WriteStartObject();
+            writer.WriteString("type", "json_object");
+            writer.WriteEndObject();
+
             writer.WriteEndObject();
         }
 
         return Encoding.UTF8.GetString(ms.ToArray());
     }
 
-    private static string ExtractAnswer(string responseJson)
+    private static AskResult ExtractResult(string responseJson)
     {
+        string content;
         try
         {
             using var doc = JsonDocument.Parse(responseJson);
@@ -99,15 +110,58 @@ internal static class LlmClient
             if (choices.GetArrayLength() == 0)
                 throw new InvalidOperationException("the response contained no choices.");
 
-            var content = choices[0].GetProperty("message").GetProperty("content").GetString();
+            content = choices[0].GetProperty("message").GetProperty("content").GetString()
+                ?? throw new InvalidOperationException("the response content was empty.");
             if (string.IsNullOrWhiteSpace(content))
                 throw new InvalidOperationException("the response content was empty.");
-
-            return content;
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException)
         {
             throw new InvalidOperationException($"unexpected response shape: {ex.Message}", ex);
+        }
+
+        return ParseStructuredContent(content);
+    }
+
+    /// <summary>
+    /// Parses the model's reply as {"answer": string, "citedEntries": [int, ...]}.
+    /// If the endpoint didn't honor response_format and returned plain prose
+    /// (or any other shape) instead, falls back to treating the whole reply
+    /// as the answer with no citations -- AskCommand then labels it
+    /// unsupported, which is the honest outcome when we can't verify what,
+    /// if anything, backed the answer.
+    /// </summary>
+    private static AskResult ParseStructuredContent(string content)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(content);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return new AskResult(content, Array.Empty<int>());
+
+            if (!root.TryGetProperty("answer", out var answerElement) ||
+                answerElement.ValueKind != JsonValueKind.String)
+                return new AskResult(content, Array.Empty<int>());
+
+            var answer = answerElement.GetString() ?? content;
+
+            var citedEntries = new List<int>();
+            if (root.TryGetProperty("citedEntries", out var citedElement) &&
+                citedElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in citedElement.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var number))
+                        citedEntries.Add(number);
+                }
+            }
+
+            return new AskResult(answer, citedEntries);
+        }
+        catch (JsonException)
+        {
+            return new AskResult(content, Array.Empty<int>());
         }
     }
 }
