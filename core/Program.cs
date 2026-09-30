@@ -18,9 +18,10 @@ try
         "log"      => LogCommand.Run(args[1..]),
         "query"    => QueryCommand.Run(args[1..]),
         "retrieve" => RetrieveCommand.Run(args[1..]),
+        "ask"      => AskCommand.Run(args[1..]),
         "init"     => InitCommand.Run(args[1..]),
         "metrics"  => MetricsCommand.Run(args[1..]),
-        _         => Fail($"Unknown command '{args[0]}'. Run 'diagnyx --help' for usage.")
+        _          => Fail($"Unknown command '{args[0]}'. Run 'diagnyx --help' for usage.")
     };
 }
 catch (Exception ex)
@@ -39,6 +40,7 @@ static int PrintHelp()
                         [--contains <text>] [--limit <n>]
           diagnyx retrieve --question <text> [--since <time>] [--until <time>] [--source <name>]
                            [--limit <n>]
+          diagnyx ask "<question>"
           diagnyx init
           diagnyx metrics serve [--port <port>]
 
@@ -46,6 +48,7 @@ static int PrintHelp()
           log             Write a structured log entry to the configured sink.
           query           Search entries in the configured file or database sink, chronologically.
           retrieve        Rank entries by relevance to a question, for AI grounding (no LLM call).
+          ask             Retrieve relevant entries and ask the configured LLM about them.
           init            Scaffold a default diagnyx.config.json in the current directory.
           metrics serve   Serve Prometheus-format log counts (requires metrics.enabled in config).
 

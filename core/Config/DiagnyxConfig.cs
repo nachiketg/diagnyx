@@ -4,6 +4,7 @@ internal sealed class DiagnyxConfig
 {
     public SinkConfig Sink { get; set; } = new();
     public MetricsConfig? Metrics { get; set; }
+    public LlmConfig? Llm { get; set; }
     public DefaultsConfig? Defaults { get; set; }
 }
 
@@ -121,6 +122,27 @@ internal sealed class MetricsConfig
 {
     public bool Enabled { get; set; } = false;
     public string Path { get; set; } = "~/.diagnyx/metrics.db";
+}
+
+/// <summary>
+/// Configures "diagnyx ask"'s LLM call. Both fields are required to use
+/// "ask" at all -- there is no default provider or model, since a generic
+/// OpenAI-compatible endpoint has no universally sensible one. The API key
+/// deliberately isn't a config field: it comes from the DIAGNYX_LLM_API_KEY
+/// environment variable instead, so it's never something that could end up
+/// committed inside diagnyx.config.json.
+/// </summary>
+internal sealed class LlmConfig
+{
+    /// <summary>
+    /// Base URL of an OpenAI-compatible chat completions API, e.g.
+    /// "https://api.openai.com/v1". "/chat/completions" is appended
+    /// automatically unless the URL already ends with it.
+    /// </summary>
+    public string? BaseUrl { get; set; }
+
+    /// <summary>Model name as the configured endpoint expects it, e.g. "gpt-4o-mini".</summary>
+    public string? Model { get; set; }
 }
 
 internal sealed class DefaultsConfig
