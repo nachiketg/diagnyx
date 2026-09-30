@@ -3,10 +3,10 @@
 `diagnyx ask` investigates an incident in natural language from the terminal: it retrieves the log entries most relevant to your question, sends them to a configured LLM along with the question, and prints a plain-text answer followed by the entries that actually back it up — so you can verify the answer instead of trusting it blindly.
 
 ```bash
-diagnyx ask "why did the payment service fail at 3pm?"
+diagnyx ask "why did the payment service fail at 3pm?" [--since <time>] [--until <time>] [--source <name>]
 ```
 
-There are no flags — quote the question as one argument. (Scoping `ask` by time range and source, matching `query`/`retrieve`'s `--since`/`--until`/`--source`, is a planned addition; for now it always searches the whole configured sink.)
+Quote the question as one argument. `--since`, `--until`, and `--source` narrow retrieval the same way they narrow [`diagnyx query`](QUERY.md) — same [time values](QUERY.md#time-values) and [matching rules](QUERY.md#matching-rules), same errors for an invalid value or an inverted `--since`/`--until` range. They can appear before or after the question. With none given, `ask` searches the whole configured sink, as before.
 
 ## Setup
 
@@ -29,7 +29,7 @@ export DIAGNYX_LLM_API_KEY=sk-...
 
 ## How it works
 
-1. **Retrieve.** The question is handed to the same [retrieval layer](RETRIEVAL.md) `diagnyx retrieve` uses — up to 20 log entries, ranked by relevance to the question, pulled from whichever sink is configured.
+1. **Retrieve.** The question, plus any `--since`/`--until`/`--source`, is handed to the same [retrieval layer](RETRIEVAL.md) `diagnyx retrieve` uses — up to 20 log entries, ranked by relevance to the question, pulled from whichever sink is configured (narrowed first by time range and source, same as `diagnyx query`, if given).
 2. **Ask.** The question and the retrieved entries (numbered, with timestamp, level, source, message, and context) are sent to the configured LLM in one chat completion request. The system message instructs it to answer only from what it was given, and to respond as `{"answer": "...", "citedEntries": [...]}` — the entry numbers it actually relied on.
 3. **Print.** The answer is printed as plain text, followed by a blank line and either:
    - a `Cited entries:` list with the timestamp and a short excerpt of each entry named in `citedEntries` (entry numbers outside the retrieved range are dropped rather than trusted), or
@@ -54,16 +54,26 @@ Cited entries:
 
 (Illustrative — the actual wording depends on your configured model and your logs.)
 
+Scoping a question to one source, on a large log store:
+
+```bash
+diagnyx ask "why are checkouts failing?" --source checkout --since 1h
+```
+
 ## Errors
 
 | Message | Cause | Fix |
 |---------|-------|-----|
 | `a question is required` | No question was given. | `diagnyx ask "<question>"`. |
 | `diagnyx ask takes a single question argument` | The question wasn't quoted, so the shell split it into multiple arguments. | Quote it: `diagnyx ask "why did it fail?"`. |
+| `unknown option '...'` | A flag other than `--since`/`--until`/`--source` was given. | Check spelling — `ask` doesn't (yet) support `--level`, `--contains`, or `--limit`. |
+| `--since/--until/--source requires a non-empty value` | The flag had no value after it. | Give it one, e.g. `--since 1h`. |
+| `invalid --since/--until value '...'` | The value wasn't a valid [time value](QUERY.md#time-values). | Use a relative duration (`30m`, `2h`, `7d`) or an ISO 8601 timestamp. |
+| `--since must not be later than --until` | The range is inverted. | Swap or fix the two values. |
 | `no LLM is configured` | `llm.baseUrl` and/or `llm.model` are missing from config. | Add both — see [Setup](#setup). |
 | `the DIAGNYX_LLM_API_KEY environment variable is not set` | The env var isn't set in this shell. | `export DIAGNYX_LLM_API_KEY=...`. |
 | `... sink is write-only, so 'diagnyx ask' can't read from it` | The configured sink is `otlp` or `loki`. | Use a queryable sink (`file`, `sqlite`, `postgres`, `mysql`, `mssql`), or [fan out](CONFIG.md#sinktypes-fan-out) to one alongside your export sink. |
-| `no log entries found to answer this question` | Retrieval found nothing to send. | Check the sink actually has data; try a broader question. |
+| `no log entries found to answer this question` | Retrieval found nothing to send — including everything being filtered out by `--since`/`--until`/`--source`. | Check the sink actually has data in that range/source; try a broader question or scope. |
 | `LLM request failed: ...` | The HTTP request itself failed (unreachable endpoint, timeout, non-2xx response) or the response wasn't in the expected shape. | Check `llm.baseUrl` is correct and reachable, and that the API key is valid. |
 
 Like every other Diagnyx command, `ask` exits `1` on any failure and prints nothing to stdout — the natural-language answer only appears on success.
