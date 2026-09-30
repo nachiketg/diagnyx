@@ -145,11 +145,11 @@ See [docs/CONFIG.md](docs/CONFIG.md#metrics) for details.
 
 ## Roadmap
 
-| Phase | Scope |
-|-------|-------|
-| **v1 (current)** | Structured logger, file sink, RDBMS sinks (SQLite/Postgres/MySQL/MSSQL), .NET and Node.js SDKs |
-| **Phase 2** | OpenTelemetry alignment, Grafana/Loki exporter, observability dashboards |
-| **Phase 3** | AI-assisted root-cause analysis (`diagnyx ask`) |
+| Phase | Scope | Status |
+|-------|-------|--------|
+| **v1** | Structured logger, file sink, RDBMS sinks (SQLite/Postgres/MySQL/MSSQL), .NET and Node.js SDKs | Done |
+| **Phase 2** | OpenTelemetry alignment, Grafana/Loki exporter, observability dashboards | Done |
+| **Phase 3 (current)** | AI-assisted root-cause analysis (`diagnyx ask`) — relevance-ranked retrieval, LLM-backed answers with cited sources, configurable/local providers, redaction, and a setup guide | In progress |
 
 ## Contributing
 
