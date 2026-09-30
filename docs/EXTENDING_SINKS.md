@@ -19,7 +19,7 @@ ISink
 
 `ISink` is the only contract `diagnyx log` knows about. `SinkFactory` maps a config `sink.type` value to a concrete instance -- or, with [`sink.types`](CONFIG.md#sinktypes-fan-out) set to more than one type, builds each of them and wraps them in `FanOutSink`, which just loops over the real sinks: it adds no config, table, or connection concerns of its own. Everything else — connection management, table creation, parameter binding — lives inside the individual sink classes.
 
-A new sink type needs nothing extra to support fan-out: any `ISink` works inside `FanOutSink` automatically, and implementing `IQueryableSink` (see [below](#making-a-sink-queryable)) makes it eligible to serve `diagnyx query` when it's one of several sinks fanned out to.
+A new sink type needs nothing extra to support fan-out: any `ISink` works inside `FanOutSink` automatically, and implementing `IQueryableSink` (see [below](#making-a-sink-queryable)) makes it eligible to serve `diagnyx query` and `diagnyx retrieve` when it's one of several sinks fanned out to.
 
 ## ISink
 
@@ -112,7 +112,7 @@ Add the new sink type to `docs/CONFIG.md` under both the `sink.type` enum table 
 
 ## Making a Sink Queryable
 
-`diagnyx query` reads back through an optional second interface:
+`diagnyx query` and `diagnyx retrieve` both read back through the same optional second interface:
 
 ```csharp
 internal interface IQueryableSink
@@ -121,7 +121,7 @@ internal interface IQueryableSink
 }
 ```
 
-Implement it only if your storage can be read back. `Query` returns the most recent `query.Limit` entries matching the filters, **oldest first**, and follows the rules in [QUERY.md](QUERY.md#matching-rules) — the same on every sink, so results don't depend on where logs are stored. Throw with an actionable message if the store can't be read; a store that simply has nothing in it yet is an empty result, not an error. Export-only sinks (like `otlp` and `loki`) don't implement it, and `diagnyx query` reports that clearly.
+Implement it only if your storage can be read back. `Query` returns the most recent `query.Limit` entries matching the filters, **oldest first**, and follows the rules in [QUERY.md](QUERY.md#matching-rules) — the same on every sink, so results don't depend on where logs are stored. Throw with an actionable message if the store can't be read; a store that simply has nothing in it yet is an empty result, not an error. Export-only sinks (like `otlp` and `loki`) don't implement it, and both commands report that clearly. `diagnyx retrieve` ([`docs/RETRIEVAL.md`](RETRIEVAL.md)) calls this same method — it re-ranks the results by relevance to a question afterward, but the fetch itself is identical to `query`'s.
 
 - **RDBMS engines** get this for free from `RdbmsSink`, which builds one parameterized `SELECT`. If your engine has no `LIMIT`, override `SelectSql` (SQL Server does, to use `TOP`).
 - **RDBMS engines also get delete-older-than retention for free.** Pass an optional `RdbmsRetentionPolicy?` through your sink's constructor to `RdbmsSink`'s (see `SqliteSink`, `PostgresSink`), and wire `sink.myengine.maxAge`/`retentionCheckProbability` through `SinkFactory.BuildRetentionPolicy` like the existing engines do. No engine-specific SQL needed — the cleanup `DELETE` lives once in `RdbmsSink`.
