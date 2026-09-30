@@ -52,6 +52,8 @@ Results are printed as [JSON Lines](https://jsonlines.org/), one entry per line,
 
 Same as [`diagnyx query`](QUERY.md#which-sinks-can-be-queried): `file`, `sqlite`, `postgres`, `mysql`, and `mssql` work; `otlp` and `loki` are export-only and fail with a clear error. `diagnyx retrieve` reads the sink from your [config](CONFIG.md) exactly as `diagnyx log` and `diagnyx query` do, including `DIAGNYX_CONFIG`.
 
+Ranking never branches on sink type — it only ever calls the same `IQueryableSink.Query()` every queryable sink implements — so the same question against the same data produces the same ranked entries regardless of which one is active. CI runs the identical check scenario against all five to keep that true.
+
 ## Behavior notes
 
 - **Nothing logged yet is not an error** — same as `query`: an empty candidate pool returns no output and exits `0`.
