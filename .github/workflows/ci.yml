@@ -1786,7 +1786,7 @@ jobs:
           grep -qi "no log entries found" /tmp/dx044/err.txt
 
           DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
-            ./publish/diagnyx ask "why?" --since 2h --until 1h \
+            ./publish/diagnyx ask "why?" --since 1h --until 2h \
             2>/tmp/dx044/err.txt && exit 1 || true
           grep -qF -- "--since must not be later than --until" /tmp/dx044/err.txt
 
