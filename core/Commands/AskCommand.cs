@@ -1,35 +1,28 @@
-using System.Text;
-using Diagnyx.Core.Config;
-using Diagnyx.Core.Llm;
 using Diagnyx.Core.Logging;
-using Diagnyx.Core.Retrieval;
-using Diagnyx.Core.Sinks;
 
 namespace Diagnyx.Core.Commands;
 
 /// <summary>
 /// diagnyx ask "&lt;question&gt;" [--since &lt;time&gt;] [--until &lt;time&gt;] [--source &lt;name&gt;] [--verbose]
+/// diagnyx ask serve [--port &lt;port&gt;]
 ///
-/// Retrieves relevant entries (LogRetriever, same as "diagnyx retrieve"),
-/// sends them with the question to the configured LLM, and prints a
-/// natural-language answer followed by the timestamp and a short excerpt of
-/// each entry the model cited as evidence -- or, if it cited none, a clear
-/// UNSUPPORTED label instead of letting the answer read as verified fact.
-/// --since/--until/--source narrow retrieval the same way they narrow
-/// "diagnyx query" -- same parsing (CliTimeParser), same matching rules.
-/// --verbose prints an estimated prompt token count to stderr before the
-/// request is sent, so a surprisingly large request can be noticed (and the
-/// command killed) before it's billed, not just after.
-/// Deliberately no --limit flag yet -- RetrievalLimit stays fixed for now.
+/// Parses CLI input and prints the result; the actual retrieve-prompt-ask
+/// pipeline lives in AskService, shared with "ask serve"'s web UI so both
+/// behave identically. --since/--until/--source narrow retrieval the same
+/// way they narrow "diagnyx query" -- same parsing (CliTimeParser), same
+/// matching rules. --verbose prints an estimated prompt token count to
+/// stderr before the request is sent, so a surprisingly large request can
+/// be noticed (and the command killed) before it's billed, not just after.
+/// Deliberately no --limit flag yet -- AskService's RetrievalLimit stays
+/// fixed for now.
 /// </summary>
 internal static class AskCommand
 {
-    // Matches RetrieveCommand's own default -- a reasonable-size grounding
-    // set without a dedicated flag to control it yet.
-    private const int RetrievalLimit = 20;
-
     internal static int Run(string[] args)
     {
+        if (args.Length > 0 && args[0] == "serve")
+            return AskServeCommand.Run(args[1..]);
+
         string? question = null, since = null, until = null, source = null;
         var verbose = false;
 
@@ -79,107 +72,25 @@ internal static class AskCommand
         if (since is not null && until is not null && string.CompareOrdinal(since, until) > 0)
             return Fail("--since must not be later than --until.");
 
-        var config = ConfigLoader.Load();
+        Action<int, int>? onPromptEstimated = verbose ? PrintTokenEstimate : null;
+        var outcome = AskService.Run(question, since, until, source, onPromptEstimated);
 
-        var llm = config.Llm;
-        if (string.IsNullOrWhiteSpace(llm?.BaseUrl) && string.IsNullOrWhiteSpace(llm?.Model))
-            return Fail(
-                "no LLM is configured. Set \"llm\": { \"baseUrl\": \"...\", \"model\": \"...\" } " +
-                "in your config. See docs/CONFIG.md.");
-        if (string.IsNullOrWhiteSpace(llm?.BaseUrl))
-            return Fail("llm.baseUrl is missing from config. Set \"llm\": { \"baseUrl\": \"...\" } in your config. See docs/CONFIG.md.");
-        if (string.IsNullOrWhiteSpace(llm?.Model))
-            return Fail("llm.model is missing from config. Set \"llm\": { \"model\": \"...\" } in your config. See docs/CONFIG.md.");
+        if (!outcome.Success)
+            return Fail(outcome.Text);
 
-        // Optional: most local/self-hosted providers (Ollama, LM Studio, ...)
-        // need no key at all. Hosted providers do, but that's enforced by
-        // the provider itself (a 401/403 surfaces via "LLM request failed"),
-        // not by diagnyx -- it has no way to know which providers require one.
-        var apiKey = Environment.GetEnvironmentVariable("DIAGNYX_LLM_API_KEY");
-
-        var sink = SinkFactory.Create(config);
-        if (sink is not IQueryableSink queryable)
-            return Fail(
-                $"the '{config.Sink.Type ?? "file"}' sink is write-only, so 'diagnyx ask' can't read from it. " +
-                "Queryable sinks: file, sqlite, postgres, mysql, mssql.");
-
-        var candidates = LogRetriever.Retrieve(
-            queryable, new RetrievalRequest(question, since, until, source, RetrievalLimit));
-
-        if (candidates.Count == 0)
-            return Fail("no log entries found to answer this question. Check your sink has data.");
-
-        var maxContextChars = llm.MaxContextChars is > 0 ? llm.MaxContextChars.Value : PromptBuilder.DefaultMaxContextChars;
-        var redactContextFields = new HashSet<string>(llm.RedactContextFields ?? [], StringComparer.OrdinalIgnoreCase);
-        var userMessage = PromptBuilder.BuildUserMessage(question, candidates, maxContextChars, redactContextFields);
-
-        if (verbose)
-            PrintTokenEstimate(userMessage);
-
-        AskResult result;
-        try
-        {
-            result = LlmClient.Ask(llm.BaseUrl, llm.Model, apiKey, userMessage);
-        }
-        catch (Exception ex)
-        {
-            return Fail($"LLM request failed: {ex.Message}");
-        }
-
-        Console.WriteLine(result.Answer);
-        Console.WriteLine();
-        Console.WriteLine(FormatCitations(result.CitedEntryNumbers, candidates));
+        Console.WriteLine(outcome.Text);
         return 0;
-    }
-
-    /// <summary>
-    /// Entry numbers are 1-based and refer back to PromptBuilder's numbering
-    /// of "candidates". Numbers outside that range (a model hallucinating a
-    /// citation) are dropped rather than trusted; duplicates collapse to one
-    /// listing per entry. If nothing valid is left, the answer is labeled
-    /// unsupported -- an unverifiable citation is no citation at all.
-    /// </summary>
-    private static string FormatCitations(IReadOnlyList<int> citedEntryNumbers, IReadOnlyList<RankedEntry> candidates)
-    {
-        var cited = citedEntryNumbers
-            .Distinct()
-            .Where(number => number >= 1 && number <= candidates.Count)
-            .OrderBy(number => number)
-            .ToArray();
-
-        if (cited.Length == 0)
-            return "UNSUPPORTED: no log entries were cited as evidence for this answer.";
-
-        var sb = new StringBuilder("Cited entries:");
-        foreach (var number in cited)
-        {
-            var entry = candidates[number - 1].Entry;
-            sb.Append('\n').Append("  [").Append(number).Append("] ")
-              .Append(entry.Timestamp).Append(" -- ").Append(Excerpt(entry.Message));
-        }
-
-        return sb.ToString();
-    }
-
-    private const int ExcerptMaxLength = 80;
-
-    private static string Excerpt(string message)
-    {
-        return message.Length <= ExcerptMaxLength
-            ? message
-            : string.Concat(message.AsSpan(0, ExcerptMaxLength - 3), "...");
     }
 
     /// <summary>
     /// Printed to stderr, not stdout -- stdout stays exactly the answer (and
     /// citations) on success, nothing else, matching every other diagnyx
-    /// command. Printed before LlmClient.Ask is called, so a surprisingly
-    /// large estimate is visible before the request goes out, not after.
+    /// command. Invoked by AskService before the LLM call is made, so a
+    /// surprisingly large estimate is visible before the request goes out,
+    /// not after.
     /// </summary>
-    private static void PrintTokenEstimate(string userMessage)
+    private static void PrintTokenEstimate(int systemTokens, int userTokens)
     {
-        var systemTokens = TokenEstimator.EstimateTokens(PromptBuilder.SystemMessage);
-        var userTokens = TokenEstimator.EstimateTokens(userMessage);
         Console.Error.WriteLine(
             $"estimated prompt tokens: ~{systemTokens + userTokens} " +
             $"(system message ~{systemTokens}, question + log entries ~{userTokens}). " +

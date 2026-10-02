@@ -107,6 +107,18 @@ The checkout failures were caused by a payment gateway timeout...
 
 The estimate is deliberately rough (~4 characters per token, the same rule of thumb OpenAI's own docs use) rather than an exact count from a real tokenizer, and only covers the *prompt* — the system message plus the question and log entries actually sent. It doesn't estimate the model's reply (unknowable in advance) or a dollar cost (pricing varies by provider and model, and a local/self-hosted one typically has none at all).
 
+## Web UI
+
+```bash
+diagnyx ask serve [--port <port>]
+```
+
+A minimal local alternative to the CLI: a single page, served at `http://localhost:<port>/` (default `8080`), with a form (question, plus optional since/until/source) that shows the answer and cited entries below it after you submit. No JavaScript — the form posts to `/ask` and the server re-renders the page with the result appended.
+
+It's built entirely on the same `AskService` pipeline the CLI uses — same retrieval, same grounding, same citation formatting, same `--since`/`--until`/`--source` semantics (typed as plain text, e.g. `1h` or `2026-09-01`) — so the two can never give a different answer to the same question. `--verbose`'s token estimate isn't part of the web UI, which otherwise has no reason to print to a terminal at all.
+
+Like `diagnyx metrics serve`, this binds to `localhost` only — nothing external can reach it, and nothing about it is hosted anywhere. Stop it with Ctrl+C.
+
 ## Example
 
 ```bash

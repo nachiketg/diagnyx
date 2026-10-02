@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>diagnyx ask</title>
+<link rel="stylesheet" href="/ask.css">
+</head>
+<body>
+<h1>diagnyx ask</h1>
+<form method="post" action="/ask">
+<label>Question<input type="text" name="question" required value="{{QUESTION}}"></label>
+<div class="row">
+<div><label>Since (e.g. 1h, 2026-09-01)<input type="text" name="since" value="{{SINCE}}"></label></div>
+<div><label>Until<input type="text" name="until" value="{{UNTIL}}"></label></div>
+<div><label>Source<input type="text" name="source" value="{{SOURCE}}"></label></div>
+</div>
+<button type="submit">Ask</button>
+</form>
+{{RESULT}}
+</body>
+</html>
