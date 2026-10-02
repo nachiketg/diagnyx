@@ -93,7 +93,9 @@ diagnyx ask "why are checkouts failing?" --source checkout --since 1h
 | `--since/--until/--source requires a non-empty value` | The flag had no value after it. | Give it one, e.g. `--since 1h`. |
 | `invalid --since/--until value '...'` | The value wasn't a valid [time value](QUERY.md#time-values). | Use a relative duration (`30m`, `2h`, `7d`) or an ISO 8601 timestamp. |
 | `--since must not be later than --until` | The range is inverted. | Swap or fix the two values. |
-| `no LLM is configured` | `llm.baseUrl` and/or `llm.model` are missing from config. | Add both — see [Setup](#setup). |
+| `no LLM is configured` | Both `llm.baseUrl` and `llm.model` are missing from config. | Add both — see [Setup](#setup). |
+| `llm.baseUrl is missing from config` | `llm.model` is set but `llm.baseUrl` isn't. | Add `llm.baseUrl` — see [Setup](#setup). |
+| `llm.model is missing from config` | `llm.baseUrl` is set but `llm.model` isn't. | Add `llm.model` — see [Setup](#setup). |
 | `... sink is write-only, so 'diagnyx ask' can't read from it` | The configured sink is `otlp` or `loki`. | Use a queryable sink (`file`, `sqlite`, `postgres`, `mysql`, `mssql`), or [fan out](CONFIG.md#sinktypes-fan-out) to one alongside your export sink. |
 | `no log entries found to answer this question` | Retrieval found nothing to send — including everything being filtered out by `--since`/`--until`/`--source`. | Check the sink actually has data in that range/source; try a broader question or scope. |
 | `LLM request failed: ...` | The HTTP request itself failed (unreachable endpoint, timeout, non-2xx response) or the response wasn't in the expected shape. This includes an authentication failure from a hosted provider if `DIAGNYX_LLM_API_KEY` is missing or wrong. | Check `llm.baseUrl` is correct and reachable, and that the API key (if the provider needs one) is set and valid. |

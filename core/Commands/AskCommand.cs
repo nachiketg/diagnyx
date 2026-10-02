@@ -72,10 +72,14 @@ internal static class AskCommand
         var config = ConfigLoader.Load();
 
         var llm = config.Llm;
-        if (string.IsNullOrWhiteSpace(llm?.BaseUrl) || string.IsNullOrWhiteSpace(llm?.Model))
+        if (string.IsNullOrWhiteSpace(llm?.BaseUrl) && string.IsNullOrWhiteSpace(llm?.Model))
             return Fail(
                 "no LLM is configured. Set \"llm\": { \"baseUrl\": \"...\", \"model\": \"...\" } " +
                 "in your config. See docs/CONFIG.md.");
+        if (string.IsNullOrWhiteSpace(llm?.BaseUrl))
+            return Fail("llm.baseUrl is missing from config. Set \"llm\": { \"baseUrl\": \"...\" } in your config. See docs/CONFIG.md.");
+        if (string.IsNullOrWhiteSpace(llm?.Model))
+            return Fail("llm.model is missing from config. Set \"llm\": { \"model\": \"...\" } in your config. See docs/CONFIG.md.");
 
         // Optional: most local/self-hosted providers (Ollama, LM Studio, ...)
         // need no key at all. Hosted providers do, but that's enforced by
