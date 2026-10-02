@@ -75,6 +75,24 @@ time range: 2026-09-30T15:02:01.004Z to 2026-09-30T15:04:11.412Z. Narrow
 
 This is deterministic — no second LLM call, and entries that do fit are never merged or rewritten, so a citation always points to one real, unmodified entry. At least one entry is always included in full, even if it alone exceeds the budget, so the model always has something to work with. If you hit this regularly, narrowing `--since`/`--until`/`--source` or raising `llm.maxContextChars` gets more of the incident in front of the model.
 
+## Redaction
+
+Log `context` can carry anything an application chooses to attach — including secrets or PII that have no business leaving the machine for a third-party LLM. [`llm.redactContextFields`](CONFIG.md#llm) is a denylist of context JSON key names, masked wherever they appear in an entry's context before it's sent — case-insensitively, and at any depth (a nested object or an object inside an array is checked just as thoroughly as a top-level field):
+
+```json
+{
+  "llm": {
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini",
+    "redactContextFields": ["email", "apiKey", "ssn"]
+  }
+}
+```
+
+Given context `{"orderId":"ord-1","Email":"user@example.com","nested":{"apiKey":"sk-secret"}}`, that's sent as `{"orderId":"ord-1","Email":"[REDACTED]","nested":{"apiKey":"[REDACTED]"}}` — the key is kept (so the model still knows a field existed) and only the value is masked. Unset or empty, nothing is redacted — the behavior is unchanged from before this existed.
+
+This only affects what `ask` sends to the LLM. `diagnyx query` and `diagnyx retrieve` are local commands with no network call, and still print context unredacted — redact what you don't want attached to logs at all at the source (your application), not here.
+
 ## Token estimate
 
 ```bash

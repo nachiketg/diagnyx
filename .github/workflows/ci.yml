@@ -1985,6 +1985,33 @@ jobs:
             2>/tmp/dx044/verbose2.txt > /dev/null
           grep -qi "estimated prompt tokens" /tmp/dx044/verbose2.txt
 
+      # ── DX-052: add context-field redaction before LLM calls ───────────────────
+      # Reuses DX-044's mock LLM server, still running.
+
+      - name: DX-052 - ask masks denylisted context keys, case-insensitively and at any depth
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx044/redact.log"}},"llm":{"baseUrl":"http://127.0.0.1:4410","model":"test-model","redactContextFields":["email","apiKey"]}}' \
+            > /tmp/dx044/redact.json
+          DIAGNYX_CONFIG=/tmp/dx044/redact.json ./publish/diagnyx log \
+            --level error --message "payment failed" --source checkout \
+            --context '{"orderId":"ord-1","Email":"user@example.com","nested":{"apiKey":"sk-secret-123","safe":"value"},"items":[{"ApiKey":"another-secret"}]}'
+
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/redact.json \
+            ./publish/diagnyx ask "why did payment fail?" --source checkout > /dev/null
+          jq -e '.messages[1].content | contains("user@example.com") | not' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("sk-secret-123") | not' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("another-secret") | not' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("[REDACTED]")' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("\"orderId\":\"ord-1\"")' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("\"safe\":\"value\"")' /tmp/dx044/received_request.json
+
+      - name: DX-052 - ask sends context unredacted when redactContextFields is unset
+        run: |
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?" > /dev/null
+          jq -e '.messages[1].content | contains("orderId")' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("[REDACTED]") | not' /tmp/dx044/received_request.json
+
       - name: DX-044 - stop mock LLM server
         if: always()
         run: kill "$(cat /tmp/dx044/collector.pid)" 2>/dev/null || true

@@ -46,6 +46,8 @@ internal static class PromptBuilder
     /// </summary>
     public const int DefaultMaxContextChars = 8000;
 
+    private static readonly HashSet<string> NoRedactedFields = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Builds the user message, numbering candidates in rank order so the
     /// model can cite them back by number. A large incident can retrieve
@@ -57,11 +59,18 @@ internal static class PromptBuilder
     /// no second LLM call, no lossy merging of included entries. At least
     /// one entry is always included in full, even if it alone exceeds the
     /// budget, so a too-small budget can't reduce ask to no evidence at all.
+    /// redactContextFields (see ContextRedactor) masks matching context keys
+    /// in every included entry before it's ever assembled into this message.
     /// </summary>
-    public static string BuildUserMessage(string question, IReadOnlyList<RankedEntry> candidates, int maxContextChars = DefaultMaxContextChars)
+    public static string BuildUserMessage(
+        string question,
+        IReadOnlyList<RankedEntry> candidates,
+        int maxContextChars = DefaultMaxContextChars,
+        IReadOnlySet<string>? redactContextFields = null)
     {
         if (maxContextChars <= 0)
             maxContextChars = DefaultMaxContextChars;
+        redactContextFields ??= NoRedactedFields;
 
         var sb = new StringBuilder();
         sb.Append("Question: ").Append(question).Append("\n\nLog entries:\n");
@@ -70,7 +79,7 @@ internal static class PromptBuilder
         var includedCount = 0;
         for (var i = 0; i < candidates.Count; i++)
         {
-            var line = BuildEntryLine(i + 1, candidates[i].Entry);
+            var line = BuildEntryLine(i + 1, candidates[i].Entry, redactContextFields);
             if (includedCount > 0 && entriesLength + line.Length > maxContextChars)
                 break;
 
@@ -85,15 +94,16 @@ internal static class PromptBuilder
         return sb.ToString();
     }
 
-    private static string BuildEntryLine(int number, LogEntry entry)
+    private static string BuildEntryLine(int number, LogEntry entry, IReadOnlySet<string> redactContextFields)
     {
         var sb = new StringBuilder();
         sb.Append(number).Append(". [").Append(entry.Timestamp).Append("] ")
           .Append(entry.Level).Append(" (").Append(entry.Source).Append("): ")
           .Append(entry.Message);
 
-        if (entry.ContextJson is not null)
-            sb.Append(" context=").Append(entry.ContextJson);
+        var context = ContextRedactor.Redact(entry.ContextJson, redactContextFields);
+        if (context is not null)
+            sb.Append(" context=").Append(context);
 
         sb.Append('\n');
         return sb.ToString();

@@ -110,7 +110,8 @@ internal static class AskCommand
             return Fail("no log entries found to answer this question. Check your sink has data.");
 
         var maxContextChars = llm.MaxContextChars is > 0 ? llm.MaxContextChars.Value : PromptBuilder.DefaultMaxContextChars;
-        var userMessage = PromptBuilder.BuildUserMessage(question, candidates, maxContextChars);
+        var redactContextFields = new HashSet<string>(llm.RedactContextFields ?? [], StringComparer.OrdinalIgnoreCase);
+        var userMessage = PromptBuilder.BuildUserMessage(question, candidates, maxContextChars, redactContextFields);
 
         if (verbose)
             PrintTokenEstimate(userMessage);
