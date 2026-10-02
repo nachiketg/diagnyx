@@ -1881,6 +1881,23 @@ jobs:
         if: always()
         run: kill "$(cat /tmp/dx047/server.pid)" 2>/dev/null || true
 
+      # ── DX-048: grounded prompt template for ask ────────────────────────────────
+      # The model's actual adherence isn't something CI can verify (that's
+      # model behavior, not code), so this checks the one thing that is code:
+      # the grounding rules are actually present in the system message sent
+      # on every request. Reuses the still-running DX-044 mock server.
+
+      - name: DX-048 - the system prompt forbids outside knowledge and unverified causation
+        run: |
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?" > /dev/null
+          jq -e '.messages[0].role == "system"' /tmp/dx044/received_request.json
+          jq -e '.messages[0].content | contains("ONLY the numbered log entries")' /tmp/dx044/received_request.json
+          jq -e '.messages[0].content | contains("never your own general or prior knowledge")' /tmp/dx044/received_request.json
+          jq -e '.messages[0].content | contains("do not assert that one caused the other")' /tmp/dx044/received_request.json
+          jq -e '.messages[0].content | contains("say so plainly")' /tmp/dx044/received_request.json
+          jq -e '.messages[0].content | contains("Never guess or fill gaps with speculation")' /tmp/dx044/received_request.json
+
       - name: DX-044 - stop mock LLM server
         if: always()
         run: kill "$(cat /tmp/dx044/collector.pid)" 2>/dev/null || true

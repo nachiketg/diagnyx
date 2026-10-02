@@ -50,6 +50,15 @@ No retrieval means no LLM call: if nothing relevant is found, `ask` fails with a
 
 Not every OpenAI-compatible endpoint honors structured JSON output. If a reply can't be parsed as the `{"answer", "citedEntries"}` shape, `ask` falls back to printing the raw reply as the answer with no citations — labeled `UNSUPPORTED`, since an answer that can't be verified against specific entries shouldn't read as one that has been.
 
+## Grounding
+
+The system message doesn't just ask for an answer — it restricts the model to what the retrieved entries actually say, and rules out two specific ways an LLM tends to hallucinate a root cause:
+
+- **Outside knowledge.** The model is told not to fall back on general or prior knowledge about what *commonly* causes a given kind of error, even when that would sound like a plausible, confident explanation. If the logs don't say it, the answer shouldn't either.
+- **Correlation presented as causation.** Two errors appearing close together in time doesn't mean one caused the other — the model is instructed to describe what the entries show (e.g., "X happened, then Y happened") rather than assert a causal link no entry states directly. Asking `ask` to connect two merely-correlated entries typically gets `UNSUPPORTED`, not a confident-sounding guess.
+
+This is prompt instruction, not a guarantee — a model can still fail to follow it. The citation list is what actually lets you verify an answer; the grounding rules just make an unverifiable, speculative answer less likely in the first place.
+
 ## Example
 
 ```bash
