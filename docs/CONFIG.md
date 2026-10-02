@@ -4,6 +4,8 @@ Diagnyx Core reads its configuration from a `diagnyx.config.json` file. This doc
 
 Setting up OTLP, Loki, or Grafana for the first time? [`docs/PHASE2_SETUP.md`](PHASE2_SETUP.md) is a walkthrough with copy-pasteable config; this page is the full reference.
 
+Setting up `diagnyx ask` for the first time? [`docs/PHASE3_SETUP.md`](PHASE3_SETUP.md) walks through configuring an LLM provider (hosted or local) and redaction with copy-pasteable config; this page is the full reference.
+
 ---
 
 ## Config File Location

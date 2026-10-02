@@ -22,7 +22,8 @@ diagnyx/
 │   ├── RETRIEVAL.md        # diagnyx retrieve reference (relevance ranking for AI grounding)
 │   ├── ASK.md              # diagnyx ask reference (LLM-backed natural-language answers)
 │   ├── OTEL_MAPPING.md     # Field mapping onto the OpenTelemetry Logs Data Model
-│   └── PHASE2_SETUP.md     # Setup guide: OTLP, Loki & Grafana
+│   ├── PHASE2_SETUP.md     # Setup guide: OTLP, Loki & Grafana
+│   └── PHASE3_SETUP.md     # Setup guide: LLM provider config, redaction, first ask query
 ├── dashboards/             # Starter Grafana dashboards for the loki sink
 ├── CONTRIBUTING.md
 └── LICENSE
@@ -125,6 +126,10 @@ The core CLI is a single cross-platform binary (Native AOT, no .NET runtime requ
 
 Ready to plug Diagnyx into an observability stack? [docs/PHASE2_SETUP.md](docs/PHASE2_SETUP.md) is a full walkthrough — export via OTLP, push to Loki, import the starter dashboard, and query from the CLI — with a local Docker sandbox if you don't already have somewhere to point it.
 
+## Phase 3: AI-Assisted Root Cause Analysis
+
+Ready to ask your logs a question instead of just searching them? [docs/PHASE3_SETUP.md](docs/PHASE3_SETUP.md) walks through configuring an LLM provider (hosted or a local one via Ollama), setting up context-field redaction, and running your first `diagnyx ask` query — with real, verified example output at every step.
+
 ## Grafana Dashboard
 
 Using the `loki` sink? [`dashboards/diagnyx-logs.json`](dashboards/diagnyx-logs.json) is a starter dashboard — log volume by level and by source, plus a raw log browser — that imports directly into Grafana. See [dashboards/README.md](dashboards/README.md) for import steps.
@@ -149,7 +154,7 @@ See [docs/CONFIG.md](docs/CONFIG.md#metrics) for details.
 |-------|-------|--------|
 | **v1** | Structured logger, file sink, RDBMS sinks (SQLite/Postgres/MySQL/MSSQL), .NET and Node.js SDKs | Done |
 | **Phase 2** | OpenTelemetry alignment, Grafana/Loki exporter, observability dashboards | Done |
-| **Phase 3 (current)** | AI-assisted root-cause analysis (`diagnyx ask`) — relevance-ranked retrieval, LLM-backed answers with cited sources, configurable/local providers, redaction, and a setup guide | In progress |
+| **Phase 3** | AI-assisted root-cause analysis (`diagnyx ask`) — relevance-ranked retrieval, LLM-backed answers with cited sources, configurable/local providers, redaction, and a setup guide | Done |
 
 ## Contributing
 
