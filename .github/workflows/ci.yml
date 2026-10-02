@@ -1959,6 +1959,32 @@ jobs:
             ./publish/diagnyx ask "why did the payment service fail?" > /dev/null
           jq -e '.messages[1].content | contains("more retrieved entries not shown individually") | not' /tmp/dx044/received_request.json
 
+      # ── DX-051: estimate token usage before sending ask requests ───────────────
+      # Reuses DX-044's mock LLM server, still running.
+
+      - name: DX-051 - ask --verbose prints an estimated token count to stderr, not stdout
+        run: |
+          STDOUT=$(DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?" --verbose 2>/tmp/dx044/verbose.txt)
+          grep -qi "estimated prompt tokens" /tmp/dx044/verbose.txt
+          echo "$STDOUT" | grep -qi "estimated prompt tokens" \
+            && { echo "token estimate leaked onto stdout: $STDOUT"; exit 1; } || true
+          echo "$STDOUT" | grep -qx "Payment gateway timeout caused the checkout failure." \
+            || { echo "stdout should still be just the answer: $STDOUT"; exit 1; }
+
+      - name: DX-051 - ask without --verbose prints no token estimate
+        run: |
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?" 2>/tmp/dx044/noverbose.txt > /dev/null
+          test ! -s /tmp/dx044/noverbose.txt
+
+      - name: DX-051 - ask --verbose works interleaved with other flags and before the question
+        run: |
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask --verbose "why did the payment service fail?" --source checkout \
+            2>/tmp/dx044/verbose2.txt > /dev/null
+          grep -qi "estimated prompt tokens" /tmp/dx044/verbose2.txt
+
       - name: DX-044 - stop mock LLM server
         if: always()
         run: kill "$(cat /tmp/dx044/collector.pid)" 2>/dev/null || true
