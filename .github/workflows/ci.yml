@@ -1759,6 +1759,21 @@ jobs:
           echo "$OUTPUT" | grep -qx "UNSUPPORTED: no log entries were cited as evidence for this answer." \
             || { echo "an unstructured reply can't be verified, so it should be unsupported: $OUTPUT"; exit 1; }
 
+      - name: DX-045 - ask shows a clear placeholder, not raw JSON, when the answer field is null
+        run: |
+          # Regression check for a real failure observed against a local
+          # Ollama model: valid JSON, but "answer" is null rather than a
+          # string. Dumping the raw JSON as the answer would print literal
+          # {"answer": null, ...} syntax to the user.
+          printf '%s' '{"answer": null, "citedEntries": []}' > /tmp/dx044/next_content.txt
+          OUTPUT=$(DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?")
+          rm -f /tmp/dx044/next_content.txt
+          echo "$OUTPUT" | grep -qx "(the model did not return a readable answer)" \
+            || { echo "expected a clear placeholder instead of raw JSON: $OUTPUT"; exit 1; }
+          echo "$OUTPUT" | grep -qx "UNSUPPORTED: no log entries were cited as evidence for this answer." \
+            || { echo "expected an unsupported label: $OUTPUT"; exit 1; }
+
       # ── DX-046: scope ask queries by time range and source ─────────────────────
       # Reuses DX-044's mock LLM server, ask.json, and log data.
 
