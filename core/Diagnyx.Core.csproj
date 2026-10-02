@@ -24,4 +24,13 @@
     <PackageReference Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- "diagnyx ask serve"'s web UI assets (core/Web/), embedded so the
+         published binary stays a single self-contained file: no companion
+         asset to ship or lose track of, consistent with every other
+         diagnyx distribution. -->
+    <EmbeddedResource Include="Web/AskPage.html" />
+    <EmbeddedResource Include="Web/AskPage.css" />
+  </ItemGroup>
+
 </Project>

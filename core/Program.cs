@@ -42,6 +42,7 @@ static int PrintHelp()
                            [--limit <n>]
           diagnyx ask "<question>" [--since <time>] [--until <time>] [--source <name>]
                       [--verbose]
+          diagnyx ask serve [--port <port>]
           diagnyx init
           diagnyx metrics serve [--port <port>]
 
@@ -50,6 +51,7 @@ static int PrintHelp()
           query           Search entries in the configured file or database sink, chronologically.
           retrieve        Rank entries by relevance to a question, for AI grounding (no LLM call).
           ask             Retrieve relevant entries and ask the configured LLM about them.
+          ask serve       Serve a local web UI for ask at http://localhost (no external hosting).
           init            Scaffold a default diagnyx.config.json in the current directory.
           metrics serve   Serve Prometheus-format log counts (requires metrics.enabled in config).
 

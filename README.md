@@ -90,7 +90,7 @@ See [docs/QUERY.md](docs/QUERY.md) for all flags and matching rules.
 
 Looking for what's *relevant* to a question rather than an exact filter match? `diagnyx retrieve` ranks entries by relevance instead of returning them chronologically — the grounding step for AI-assisted analysis, with no LLM call and no network dependency. See [docs/RETRIEVAL.md](docs/RETRIEVAL.md).
 
-Want an actual answer, not just the entries? `diagnyx ask "why did the payment service fail?"` retrieves the relevant entries and sends them with your question to a configured LLM, printing a natural-language answer followed by the timestamp and excerpt of each entry cited as evidence — or a clear `UNSUPPORTED` label if none were. Set up an LLM (any OpenAI-compatible endpoint — hosted or self-hosted) in `diagnyx.config.json`; see [docs/ASK.md](docs/ASK.md).
+Want an actual answer, not just the entries? `diagnyx ask "why did the payment service fail?"` retrieves the relevant entries and sends them with your question to a configured LLM, printing a natural-language answer followed by the timestamp and excerpt of each entry cited as evidence — or a clear `UNSUPPORTED` label if none were. Set up an LLM (any OpenAI-compatible endpoint — hosted or self-hosted) in `diagnyx.config.json`; see [docs/ASK.md](docs/ASK.md). Prefer a page to a terminal? `diagnyx ask serve` serves the same thing as a minimal local web UI, no external hosting.
 
 ## Architecture
 

@@ -2055,6 +2055,67 @@ jobs:
             exit 1
           fi
 
+      # ── DX-054: optional local web UI for ask ───────────────────────────────────
+      # Reuses DX-044's mock LLM server and ask.json, still running.
+
+      - name: DX-054 - start the ask web UI
+        run: |
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask serve --port 8090 &
+          echo $! > /tmp/dx044/webui.pid
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null http://localhost:8090/ && break
+            sleep 0.25
+          done
+
+      - name: DX-054 - the page loads with a form linking its stylesheet
+        run: |
+          curl -sf http://localhost:8090/ > /tmp/dx044/webui_index.html
+          grep -q '<form method="post" action="/ask">' /tmp/dx044/webui_index.html
+          grep -q 'name="question"' /tmp/dx044/webui_index.html
+          grep -q '<link rel="stylesheet" href="/ask.css">' /tmp/dx044/webui_index.html
+
+      - name: DX-054 - the stylesheet is served separately with the right content type
+        run: |
+          CONTENT_TYPE=$(curl -sf -o /tmp/dx044/webui.css -D - http://localhost:8090/ask.css | grep -i '^content-type:')
+          echo "$CONTENT_TYPE" | grep -qi 'text/css'
+          grep -q '\.result\.ok' /tmp/dx044/webui.css
+
+      - name: DX-054 - submitting a question shows the answer and cited entries, built on AskService
+        run: |
+          curl -sf -X POST http://localhost:8090/ask \
+            --data-urlencode "question=why did the payment service fail?" \
+            > /tmp/dx044/webui_result.html
+          grep -q 'result ok' /tmp/dx044/webui_result.html
+          grep -q 'Payment gateway timeout caused the checkout failure' /tmp/dx044/webui_result.html
+          grep -q 'Cited entries:' /tmp/dx044/webui_result.html
+          grep -qE '\[1\] .+ -- payment gateway timeout' /tmp/dx044/webui_result.html
+
+      - name: DX-054 - submitting an empty question shows a clear error, not a crash
+        run: |
+          CODE=$(curl -s -o /tmp/dx044/webui_error.html -w "%{http_code}" -X POST http://localhost:8090/ask \
+            --data-urlencode "question=")
+          test "$CODE" -eq 200
+          grep -q 'result error' /tmp/dx044/webui_error.html
+          grep -q 'a question is required' /tmp/dx044/webui_error.html
+
+      - name: DX-054 - a submitted question is HTML-escaped, not rendered as markup
+        run: |
+          curl -sf -X POST http://localhost:8090/ask \
+            --data-urlencode 'question=<script>alert(1)</script>' \
+            > /tmp/dx044/webui_escaped.html
+          grep -qF '&lt;script&gt;' /tmp/dx044/webui_escaped.html
+          grep -qF '<script>alert' /tmp/dx044/webui_escaped.html && exit 1 || true
+
+      - name: DX-054 - an unknown path returns 404
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/nonexistent)
+          test "$CODE" -eq 404
+
+      - name: DX-054 - stop the ask web UI
+        if: always()
+        run: kill "$(cat /tmp/dx044/webui.pid)" 2>/dev/null || true
+
       - name: DX-044 - stop mock LLM server
         if: always()
         run: kill "$(cat /tmp/dx044/collector.pid)" 2>/dev/null || true
