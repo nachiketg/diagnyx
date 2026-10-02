@@ -8,7 +8,7 @@ using Diagnyx.Core.Sinks;
 namespace Diagnyx.Core.Commands;
 
 /// <summary>
-/// diagnyx ask "&lt;question&gt;" [--since &lt;time&gt;] [--until &lt;time&gt;] [--source &lt;name&gt;]
+/// diagnyx ask "&lt;question&gt;" [--since &lt;time&gt;] [--until &lt;time&gt;] [--source &lt;name&gt;] [--verbose]
 ///
 /// Retrieves relevant entries (LogRetriever, same as "diagnyx retrieve"),
 /// sends them with the question to the configured LLM, and prints a
@@ -17,6 +17,9 @@ namespace Diagnyx.Core.Commands;
 /// UNSUPPORTED label instead of letting the answer read as verified fact.
 /// --since/--until/--source narrow retrieval the same way they narrow
 /// "diagnyx query" -- same parsing (CliTimeParser), same matching rules.
+/// --verbose prints an estimated prompt token count to stderr before the
+/// request is sent, so a surprisingly large request can be noticed (and the
+/// command killed) before it's billed, not just after.
 /// Deliberately no --limit flag yet -- RetrievalLimit stays fixed for now.
 /// </summary>
 internal static class AskCommand
@@ -28,6 +31,7 @@ internal static class AskCommand
     internal static int Run(string[] args)
     {
         string? question = null, since = null, until = null, source = null;
+        var verbose = false;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -37,6 +41,12 @@ internal static class AskCommand
                 if (question is not null)
                     return Fail("diagnyx ask takes a single question argument -- quote it if it contains spaces.");
                 question = arg;
+                continue;
+            }
+
+            if (arg == "--verbose")
+            {
+                verbose = true;
                 continue;
             }
 
@@ -102,6 +112,9 @@ internal static class AskCommand
         var maxContextChars = llm.MaxContextChars is > 0 ? llm.MaxContextChars.Value : PromptBuilder.DefaultMaxContextChars;
         var userMessage = PromptBuilder.BuildUserMessage(question, candidates, maxContextChars);
 
+        if (verbose)
+            PrintTokenEstimate(userMessage);
+
         AskResult result;
         try
         {
@@ -154,6 +167,22 @@ internal static class AskCommand
         return message.Length <= ExcerptMaxLength
             ? message
             : string.Concat(message.AsSpan(0, ExcerptMaxLength - 3), "...");
+    }
+
+    /// <summary>
+    /// Printed to stderr, not stdout -- stdout stays exactly the answer (and
+    /// citations) on success, nothing else, matching every other diagnyx
+    /// command. Printed before LlmClient.Ask is called, so a surprisingly
+    /// large estimate is visible before the request goes out, not after.
+    /// </summary>
+    private static void PrintTokenEstimate(string userMessage)
+    {
+        var systemTokens = TokenEstimator.EstimateTokens(PromptBuilder.SystemMessage);
+        var userTokens = TokenEstimator.EstimateTokens(userMessage);
+        Console.Error.WriteLine(
+            $"estimated prompt tokens: ~{systemTokens + userTokens} " +
+            $"(system message ~{systemTokens}, question + log entries ~{userTokens}). " +
+            "A rough estimate (~4 chars/token) -- not an exact count, and excludes the model's reply.");
     }
 
     private static int Fail(string message)

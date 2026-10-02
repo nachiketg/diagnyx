@@ -40,7 +40,8 @@ static int PrintHelp()
                         [--contains <text>] [--limit <n>]
           diagnyx retrieve --question <text> [--since <time>] [--until <time>] [--source <name>]
                            [--limit <n>]
-          diagnyx ask "<question>"
+          diagnyx ask "<question>" [--since <time>] [--until <time>] [--source <name>]
+                      [--verbose]
           diagnyx init
           diagnyx metrics serve [--port <port>]
 

@@ -3,10 +3,10 @@
 `diagnyx ask` investigates an incident in natural language from the terminal: it retrieves the log entries most relevant to your question, sends them to a configured LLM along with the question, and prints a plain-text answer followed by the entries that actually back it up — so you can verify the answer instead of trusting it blindly.
 
 ```bash
-diagnyx ask "why did the payment service fail at 3pm?" [--since <time>] [--until <time>] [--source <name>]
+diagnyx ask "why did the payment service fail at 3pm?" [--since <time>] [--until <time>] [--source <name>] [--verbose]
 ```
 
-Quote the question as one argument. `--since`, `--until`, and `--source` narrow retrieval the same way they narrow [`diagnyx query`](QUERY.md) — same [time values](QUERY.md#time-values) and [matching rules](QUERY.md#matching-rules), same errors for an invalid value or an inverted `--since`/`--until` range. They can appear before or after the question. With none given, `ask` searches the whole configured sink, as before.
+Quote the question as one argument. `--since`, `--until`, and `--source` narrow retrieval the same way they narrow [`diagnyx query`](QUERY.md) — same [time values](QUERY.md#time-values) and [matching rules](QUERY.md#matching-rules), same errors for an invalid value or an inverted `--since`/`--until` range. `--verbose` prints an estimated prompt token count to stderr before the request is sent — see [Token estimate](#token-estimate). All flags can appear before or after the question. With no `--since`/`--until`/`--source`, `ask` searches the whole configured sink, as before.
 
 ## Setup
 
@@ -75,6 +75,18 @@ time range: 2026-09-30T15:02:01.004Z to 2026-09-30T15:04:11.412Z. Narrow
 
 This is deterministic — no second LLM call, and entries that do fit are never merged or rewritten, so a citation always points to one real, unmodified entry. At least one entry is always included in full, even if it alone exceeds the budget, so the model always has something to work with. If you hit this regularly, narrowing `--since`/`--until`/`--source` or raising `llm.maxContextChars` gets more of the incident in front of the model.
 
+## Token estimate
+
+```bash
+$ diagnyx ask "why did checkout fail?" --verbose
+estimated prompt tokens: ~251 (system message ~221, question + log entries ~30). A rough estimate (~4 chars/token) -- not an exact count, and excludes the model's reply.
+The checkout failures were caused by a payment gateway timeout...
+```
+
+`--verbose` prints this one line to stderr, before the request is sent, so an unexpectedly large request is visible before it's made — not just after, when it's already been billed. stdout is unaffected either way: it's always just the answer and citations on success, nothing else.
+
+The estimate is deliberately rough (~4 characters per token, the same rule of thumb OpenAI's own docs use) rather than an exact count from a real tokenizer, and only covers the *prompt* — the system message plus the question and log entries actually sent. It doesn't estimate the model's reply (unknowable in advance) or a dollar cost (pricing varies by provider and model, and a local/self-hosted one typically has none at all).
+
 ## Example
 
 ```bash
@@ -102,7 +114,7 @@ diagnyx ask "why are checkouts failing?" --source checkout --since 1h
 |---------|-------|-----|
 | `a question is required` | No question was given. | `diagnyx ask "<question>"`. |
 | `diagnyx ask takes a single question argument` | The question wasn't quoted, so the shell split it into multiple arguments. | Quote it: `diagnyx ask "why did it fail?"`. |
-| `unknown option '...'` | A flag other than `--since`/`--until`/`--source` was given. | Check spelling — `ask` doesn't (yet) support `--level`, `--contains`, or `--limit`. |
+| `unknown option '...'` | A flag other than `--since`/`--until`/`--source`/`--verbose` was given. | Check spelling — `ask` doesn't (yet) support `--level`, `--contains`, or `--limit`. |
 | `--since/--until/--source requires a non-empty value` | The flag had no value after it. | Give it one, e.g. `--since 1h`. |
 | `invalid --since/--until value '...'` | The value wasn't a valid [time value](QUERY.md#time-values). | Use a relative duration (`30m`, `2h`, `7d`) or an ISO 8601 timestamp. |
 | `--since must not be later than --until` | The range is inverted. | Swap or fix the two values. |
