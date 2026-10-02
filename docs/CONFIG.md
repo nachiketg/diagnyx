@@ -368,6 +368,7 @@ Configures [`diagnyx ask`](ASK.md). `baseUrl` and `model` are required to use `a
 |-----|------|----------|-------------|
 | `baseUrl` | `string` | Yes | Base URL of an OpenAI-compatible chat completions API, e.g. `https://api.openai.com/v1`. `/chat/completions` is appended automatically unless the URL already ends with it. |
 | `model` | `string` | Yes | Model name exactly as the configured endpoint expects it, e.g. `gpt-4o-mini`. |
+| `maxContextChars` | `int` | No | Character budget for the retrieved log entries included in the prompt. Beyond this, entries are left out of the numbered list (so they can never be cited) and rolled into one summary line naming their sources and time range instead. Unset, or any non-positive value, defaults to `8000` (roughly 2000 tokens). At least one entry is always included in full, even if it alone exceeds the budget. |
 
 "Generic OpenAI-compatible" means any endpoint that speaks the same request/response shape: OpenAI itself, many other hosted providers, and self-hosted/local runtimes (Ollama, LM Studio, ...) that offer OpenAI-compatible chat completions. Point `baseUrl` at whichever one you're running — two worked examples:
 

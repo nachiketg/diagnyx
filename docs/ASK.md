@@ -41,7 +41,7 @@ The API key is always an environment variable, never a config field, so it's nev
 ## How it works
 
 1. **Retrieve.** The question, plus any `--since`/`--until`/`--source`, is handed to the same [retrieval layer](RETRIEVAL.md) `diagnyx retrieve` uses — up to 20 log entries, ranked by relevance to the question, pulled from whichever sink is configured (narrowed first by time range and source, same as `diagnyx query`, if given).
-2. **Ask.** The question and the retrieved entries (numbered, with timestamp, level, source, message, and context) are sent to the configured LLM in one chat completion request. The system message instructs it to answer only from what it was given, and to respond as `{"answer": "...", "citedEntries": [...]}` — the entry numbers it actually relied on.
+2. **Ask.** The question and the retrieved entries (numbered, with timestamp, level, source, message, and context) are sent to the configured LLM in one chat completion request, up to a character budget (see [Context budget](#context-budget) below). The system message instructs it to answer only from what it was given, and to respond as `{"answer": "...", "citedEntries": [...]}` — the entry numbers it actually relied on.
 3. **Print.** The answer is printed as plain text, followed by a blank line and either:
    - a `Cited entries:` list with the timestamp and a short excerpt of each entry named in `citedEntries` (entry numbers outside the retrieved range are dropped rather than trusted), or
    - `UNSUPPORTED: no log entries were cited as evidence for this answer.`, if `citedEntries` was empty, missing, or every number in it was invalid.
@@ -61,6 +61,19 @@ The system message doesn't just ask for an answer — it restricts the model to 
 - **Correlation presented as causation.** Two errors appearing close together in time doesn't mean one caused the other — the model is instructed to describe what the entries show (e.g., "X happened, then Y happened") rather than assert a causal link no entry states directly. Asking `ask` to connect two merely-correlated entries typically gets `UNSUPPORTED`, not a confident-sounding guess.
 
 This is prompt instruction, not a guarantee — a model can still fail to follow it. The citation list is what actually lets you verify an answer; the grounding rules just make an unverifiable, speculative answer less likely in the first place.
+
+## Context budget
+
+A large incident can retrieve entries whose combined text risks exceeding the model's context window. Retrieved entries are included in the prompt, in full, up to [`llm.maxContextChars`](CONFIG.md#llm) (8000 characters by default) — whatever doesn't fit is left out of the numbered list entirely, so it can never be cited, and rolled into one summary line naming the excluded entries' count, sources, and time range instead:
+
+```
+17. [2026-09-30T15:03:58.112Z] error (checkout): checkout request started
+(+12 more retrieved entries not shown individually -- sources: checkout, billing;
+time range: 2026-09-30T15:02:01.004Z to 2026-09-30T15:04:11.412Z. Narrow
+--since/--until/--source, or ask a more specific question, to include them.)
+```
+
+This is deterministic — no second LLM call, and entries that do fit are never merged or rewritten, so a citation always points to one real, unmodified entry. At least one entry is always included in full, even if it alone exceeds the budget, so the model always has something to work with. If you hit this regularly, narrowing `--since`/`--until`/`--source` or raising `llm.maxContextChars` gets more of the incident in front of the model.
 
 ## Example
 

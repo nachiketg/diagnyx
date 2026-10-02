@@ -1925,6 +1925,40 @@ jobs:
           jq -e '.messages[0].content | contains("say so plainly")' /tmp/dx044/received_request.json
           jq -e '.messages[0].content | contains("Never guess or fill gaps with speculation")' /tmp/dx044/received_request.json
 
+      # ── DX-050: summarize/chunk long log spans for LLM context window ──────────
+      # Reuses DX-044's mock LLM server, still running.
+
+      - name: DX-050 - ask chunks retrieved entries beyond the configured character budget
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx044/chunk.log"}},"llm":{"baseUrl":"http://127.0.0.1:4410","model":"test-model","maxContextChars":500}}' \
+            > /tmp/dx044/chunk.json
+          for i in $(seq 1 20); do
+            DIAGNYX_CONFIG=/tmp/dx044/chunk.json ./publish/diagnyx log \
+              --level error --message "payment gateway timeout number $i occurred during checkout processing" \
+              --source checkout --context "{\"orderId\":\"ord-$i\"}"
+          done
+
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/chunk.json \
+            ./publish/diagnyx ask "why did payment fail?" > /dev/null
+          jq -e '.messages[1].content | contains("more retrieved entries not shown individually")' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("1. [")' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("20. [") | not' /tmp/dx044/received_request.json
+
+      - name: DX-050 - ask always includes at least one entry even with a tiny budget
+        run: |
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx044/chunk.log"}},"llm":{"baseUrl":"http://127.0.0.1:4410","model":"test-model","maxContextChars":1}}' \
+            > /tmp/dx044/tinybudget.json
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/tinybudget.json \
+            ./publish/diagnyx ask "why did payment fail?" > /dev/null
+          jq -e '.messages[1].content | contains("1. [")' /tmp/dx044/received_request.json
+          jq -e '.messages[1].content | contains("more retrieved entries not shown individually")' /tmp/dx044/received_request.json
+
+      - name: DX-050 - ask sends entries in full with no chunking when under the default budget
+        run: |
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?" > /dev/null
+          jq -e '.messages[1].content | contains("more retrieved entries not shown individually") | not' /tmp/dx044/received_request.json
+
       - name: DX-044 - stop mock LLM server
         if: always()
         run: kill "$(cat /tmp/dx044/collector.pid)" 2>/dev/null || true
