@@ -143,6 +143,17 @@ internal sealed class LlmConfig
 
     /// <summary>Model name as the configured endpoint expects it, e.g. "gpt-4o-mini".</summary>
     public string? Model { get; set; }
+
+    /// <summary>
+    /// Character budget for the retrieved log entries included in the
+    /// prompt (see PromptBuilder). A large incident can retrieve entries
+    /// whose combined text would risk exceeding the model's context
+    /// window; entries beyond this budget are left out of the prompt and
+    /// rolled into a single summary line instead of being sent in full.
+    /// Unset, or any non-positive value, falls back to
+    /// PromptBuilder.DefaultMaxContextChars.
+    /// </summary>
+    public int? MaxContextChars { get; set; }
 }
 
 internal sealed class DefaultsConfig

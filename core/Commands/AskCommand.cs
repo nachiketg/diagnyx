@@ -99,7 +99,8 @@ internal static class AskCommand
         if (candidates.Count == 0)
             return Fail("no log entries found to answer this question. Check your sink has data.");
 
-        var userMessage = PromptBuilder.BuildUserMessage(question, candidates);
+        var maxContextChars = llm.MaxContextChars is > 0 ? llm.MaxContextChars.Value : PromptBuilder.DefaultMaxContextChars;
+        var userMessage = PromptBuilder.BuildUserMessage(question, candidates, maxContextChars);
 
         AskResult result;
         try
