@@ -1691,6 +1691,18 @@ jobs:
             2>/tmp/dx044/err.txt && exit 1 || true
           grep -qi "no LLM is configured" /tmp/dx044/err.txt
 
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx044/nomodel.log"}},"llm":{"baseUrl":"http://127.0.0.1:4410"}}' \
+            > /tmp/dx044/nomodel.json
+          DIAGNYX_CONFIG=/tmp/dx044/nomodel.json ./publish/diagnyx ask "why?" \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "llm.model is missing" /tmp/dx044/err.txt
+
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx044/nobaseurl.log"}},"llm":{"model":"x"}}' \
+            > /tmp/dx044/nobaseurl.json
+          DIAGNYX_CONFIG=/tmp/dx044/nobaseurl.json ./publish/diagnyx ask "why?" \
+            2>/tmp/dx044/err.txt && exit 1 || true
+          grep -qi "llm.baseUrl is missing" /tmp/dx044/err.txt
+
           printf '{"sink":{"type":"otlp","otlp":{"endpoint":"http://127.0.0.1:19999"}},"llm":{"baseUrl":"http://127.0.0.1:4410","model":"x"}}' \
             > /tmp/dx044/otlp.json
           DIAGNYX_CONFIG=/tmp/dx044/otlp.json ./publish/diagnyx ask "why?" \
