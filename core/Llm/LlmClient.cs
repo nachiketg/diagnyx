@@ -131,27 +131,52 @@ internal static class LlmClient
     }
 
     /// <summary>
+    /// A response that was unmistakably not JSON at all, but one of our own
+    /// placeholders rather than the model's raw (and potentially confusing,
+    /// e.g. literal brace-and-quote JSON syntax) text.
+    /// </summary>
+    private const string NoReadableAnswer = "(the model did not return a readable answer)";
+
+    /// <summary>
     /// Parses the model's reply as {"answer": string, "citedEntries": [int, ...]}.
-    /// If the endpoint didn't honor response_format and returned plain prose
-    /// (or any other shape) instead, falls back to treating the whole reply
-    /// as the answer with no citations -- AskCommand then labels it
-    /// unsupported, which is the honest outcome when we can't verify what,
-    /// if anything, backed the answer.
+    /// Two distinct fallbacks, both ending up unsupported (AskCommand labels
+    /// an empty citedEntries list as such, which is the honest outcome when
+    /// we can't verify what, if anything, backed the answer):
+    /// - Not JSON at all (the endpoint ignored response_format and returned
+    ///   plain prose) -- the whole reply becomes the answer, since it IS the
+    ///   model's actual text.
+    /// - Valid JSON, but not the expected shape -- e.g. "answer" is missing,
+    ///   or null rather than a string (observed from a real small local
+    ///   model). Falling back to the raw JSON here, as if it were prose,
+    ///   would print literal {"answer": null, ...} syntax as if it were the
+    ///   model's answer, so this uses NoReadableAnswer instead. Any
+    ///   "citedEntries" alongside an unusable answer aren't trustworthy
+    ///   either, so they're discarded too.
     /// </summary>
     private static AskResult ParseStructuredContent(string content)
     {
+        JsonDocument doc;
         try
         {
-            using var doc = JsonDocument.Parse(content);
+            doc = JsonDocument.Parse(content);
+        }
+        catch (JsonException)
+        {
+            return new AskResult(content, Array.Empty<int>());
+        }
+
+        using (doc)
+        {
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
-                return new AskResult(content, Array.Empty<int>());
+                return new AskResult(NoReadableAnswer, Array.Empty<int>());
 
             if (!root.TryGetProperty("answer", out var answerElement) ||
                 answerElement.ValueKind != JsonValueKind.String)
-                return new AskResult(content, Array.Empty<int>());
+                return new AskResult(NoReadableAnswer, Array.Empty<int>());
 
-            var answer = answerElement.GetString() ?? content;
+            // GetString() is never null here -- ValueKind == String guarantees it.
+            var answer = answerElement.GetString()!;
 
             var citedEntries = new List<int>();
             if (root.TryGetProperty("citedEntries", out var citedElement) &&
@@ -165,10 +190,6 @@ internal static class LlmClient
             }
 
             return new AskResult(answer, citedEntries);
-        }
-        catch (JsonException)
-        {
-            return new AskResult(content, Array.Empty<int>());
         }
     }
 }

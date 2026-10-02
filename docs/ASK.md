@@ -48,7 +48,10 @@ The API key is always an environment variable, never a config field, so it's nev
 
 No retrieval means no LLM call: if nothing relevant is found, `ask` fails with a clear message instead of spending a request on empty context.
 
-Not every OpenAI-compatible endpoint honors structured JSON output. If a reply can't be parsed as the `{"answer", "citedEntries"}` shape, `ask` falls back to printing the raw reply as the answer with no citations — labeled `UNSUPPORTED`, since an answer that can't be verified against specific entries shouldn't read as one that has been.
+Not every OpenAI-compatible endpoint honors structured JSON output, and both fallbacks end up `UNSUPPORTED` with no citations, since an answer that can't be verified against specific entries shouldn't read as one that has been:
+
+- If the reply isn't JSON at all (the endpoint ignored `response_format` and returned plain prose), that prose is printed as the answer — it IS the model's actual text.
+- If the reply is valid JSON but doesn't match the expected shape (e.g. `"answer"` missing or `null`, as a few real small/local models have returned), `ask` prints `(the model did not return a readable answer)` rather than the raw JSON — otherwise literal `{"answer": null, ...}` syntax would show up as if it were the answer.
 
 ## Grounding
 
