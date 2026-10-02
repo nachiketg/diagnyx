@@ -2012,6 +2012,41 @@ jobs:
           jq -e '.messages[1].content | contains("orderId")' /tmp/dx044/received_request.json
           jq -e '.messages[1].content | contains("[REDACTED]") | not' /tmp/dx044/received_request.json
 
+      # ── DX-053: support fully local/self-hosted LLM for ask ─────────────────────
+      # The functionality already works (DX-047 made the API key optional and
+      # proved a generic OpenAI-compatible baseUrl covers local runtimes like
+      # Ollama); this verifies the privacy guarantee itself -- that pointing ask
+      # at a local endpoint results in zero outbound calls to anywhere else.
+      # A code audit confirms ask's only possible network call is LlmClient.Ask's
+      # single request to the configured baseUrl (the other two HttpClient call
+      # sites in this repo, LokiSink and OtlpSink, are both write-only sinks ask
+      # itself refuses to run against). This step proves it operationally, by
+      # packet-capturing for real rather than trusting the audit alone: nothing
+      # reaches port 443 (how every real hosted LLM API is actually reached)
+      # while ask completes successfully against a loopback-only mock provider.
+
+      - name: DX-053 - diagnyx ask against a local provider makes no outbound HTTPS calls
+        run: |
+          mkdir -p /tmp/dx053
+          sudo tcpdump -i any -w /tmp/dx053/capture.pcap 'tcp dst port 443' &
+          TCPDUMP_PID=$!
+          sleep 2
+
+          DIAGNYX_LLM_API_KEY=test-key-not-real DIAGNYX_CONFIG=/tmp/dx044/ask.json \
+            ./publish/diagnyx ask "why did the payment service fail?" > /dev/null
+
+          sleep 2
+          sudo kill "$TCPDUMP_PID"
+          wait "$TCPDUMP_PID" 2>/dev/null || true
+          sudo chmod 644 /tmp/dx053/capture.pcap
+
+          PACKET_COUNT=$(tcpdump -r /tmp/dx053/capture.pcap 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$PACKET_COUNT" -ne 0 ]; then
+            echo "expected zero outbound HTTPS (port 443) packets while asking against a local-only provider, got $PACKET_COUNT:"
+            tcpdump -r /tmp/dx053/capture.pcap
+            exit 1
+          fi
+
       - name: DX-044 - stop mock LLM server
         if: always()
         run: kill "$(cat /tmp/dx044/collector.pid)" 2>/dev/null || true

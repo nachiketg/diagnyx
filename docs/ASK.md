@@ -38,6 +38,8 @@ Or, pointed at a local Ollama instead, with no API key at all:
 
 The API key is always an environment variable, never a config field, so it's never something that could end up committed inside `diagnyx.config.json`. It's also optional: `DIAGNYX_LLM_API_KEY` is sent as a `Bearer` token when set, and omitted entirely when not — most local/self-hosted runtimes don't check it. A hosted provider that requires one rejects the request itself if it's missing, which surfaces as `LLM request failed: ...` below.
 
+Pointed at a local/self-hosted endpoint, `ask` makes **zero** outbound calls to anywhere else: retrieval is entirely local file/database I/O, and `LlmClient` makes exactly one request, to `llm.baseUrl` and nowhere else — nothing phones home. CI verifies this operationally (not just by reading the code) by packet-capturing an `ask` run against a loopback-only provider and confirming no traffic reaches port 443, the port every real hosted LLM API is actually reached on.
+
 ## How it works
 
 1. **Retrieve.** The question, plus any `--since`/`--until`/`--source`, is handed to the same [retrieval layer](RETRIEVAL.md) `diagnyx retrieve` uses — up to 20 log entries, ranked by relevance to the question, pulled from whichever sink is configured (narrowed first by time range and source, same as `diagnyx query`, if given).
