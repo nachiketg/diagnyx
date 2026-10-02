@@ -77,9 +77,11 @@ internal static class AskCommand
                 "no LLM is configured. Set \"llm\": { \"baseUrl\": \"...\", \"model\": \"...\" } " +
                 "in your config. See docs/CONFIG.md.");
 
+        // Optional: most local/self-hosted providers (Ollama, LM Studio, ...)
+        // need no key at all. Hosted providers do, but that's enforced by
+        // the provider itself (a 401/403 surfaces via "LLM request failed"),
+        // not by diagnyx -- it has no way to know which providers require one.
         var apiKey = Environment.GetEnvironmentVariable("DIAGNYX_LLM_API_KEY");
-        if (string.IsNullOrWhiteSpace(apiKey))
-            return Fail("the DIAGNYX_LLM_API_KEY environment variable is not set. See docs/CONFIG.md.");
 
         var sink = SinkFactory.Create(config);
         if (sink is not IQueryableSink queryable)

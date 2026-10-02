@@ -362,12 +362,16 @@ Any other path returns `404`. The server runs until stopped (Ctrl+C, or the proc
 
 **Status: implemented (v1)**
 
-Configures [`diagnyx ask`](ASK.md). Both fields are required to use `ask` at all — there's no default provider or model, since a generic OpenAI-compatible endpoint has no universally sensible one.
+Configures [`diagnyx ask`](ASK.md). `baseUrl` and `model` are required to use `ask` at all — there's no default provider or model, since a generic OpenAI-compatible endpoint has no universally sensible one. Switching providers, including between a hosted one and a local one, is purely a config (and, where needed, environment variable) change — never a code change.
 
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `baseUrl` | `string` | Yes | Base URL of an OpenAI-compatible chat completions API, e.g. `https://api.openai.com/v1`. `/chat/completions` is appended automatically unless the URL already ends with it. |
 | `model` | `string` | Yes | Model name exactly as the configured endpoint expects it, e.g. `gpt-4o-mini`. |
+
+"Generic OpenAI-compatible" means any endpoint that speaks the same request/response shape: OpenAI itself, many other hosted providers, and self-hosted/local runtimes (Ollama, LM Studio, ...) that offer OpenAI-compatible chat completions. Point `baseUrl` at whichever one you're running — two worked examples:
+
+**A hosted provider (OpenAI):**
 
 ```json
 {
@@ -378,9 +382,22 @@ Configures [`diagnyx ask`](ASK.md). Both fields are required to use `ask` at all
 }
 ```
 
-**The API key is never a config field.** Set the `DIAGNYX_LLM_API_KEY` environment variable instead — that way it's never something that could end up committed inside `diagnyx.config.json`, unlike an RDBMS connection string. `diagnyx ask` fails immediately with a clear error if it's unset.
+```bash
+export DIAGNYX_LLM_API_KEY=sk-...
+```
 
-"Generic OpenAI-compatible" means any endpoint that speaks the same request/response shape: OpenAI itself, and many other hosted providers and self-hosted/local runtimes (Ollama, LM Studio, ...) that offer OpenAI-compatible chat completions. Point `baseUrl` at whichever one you're running.
+**A local/self-hosted provider (Ollama), with no API key at all:**
+
+```json
+{
+  "llm": {
+    "baseUrl": "http://localhost:11434/v1",
+    "model": "llama3.2"
+  }
+}
+```
+
+**The API key is never a config field.** Set the `DIAGNYX_LLM_API_KEY` environment variable instead — that way it's never something that could end up committed inside `diagnyx.config.json`, unlike an RDBMS connection string. It's also **optional**: most local/self-hosted runtimes don't check it at all, so `ask` sends no `Authorization` header when it's unset. A hosted provider that requires one will reject the request itself if it's missing or wrong, surfaced as `LLM request failed: 401 ...` (or similar) from `ask`.
 
 ---
 
