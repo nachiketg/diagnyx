@@ -2012,6 +2012,49 @@ jobs:
           jq -e '.messages[1].content | contains("orderId")' /tmp/dx044/received_request.json
           jq -e '.messages[1].content | contains("[REDACTED]") | not' /tmp/dx044/received_request.json
 
+      # ── DX-053: support fully local/self-hosted LLM for ask ─────────────────────
+      # The functionality already works (DX-047 made the API key optional and
+      # proved a generic OpenAI-compatible baseUrl covers local runtimes like
+      # Ollama); this verifies the privacy guarantee itself -- that pointing ask
+      # at a local endpoint results in zero outbound calls to anywhere else.
+      # A code audit confirms ask's only possible network call is LlmClient.Ask's
+      # single request to the configured baseUrl (the other two HttpClient call
+      # sites in this repo, LokiSink and OtlpSink, are both write-only sinks ask
+      # itself refuses to run against). This step proves it operationally rather
+      # than trusting the audit alone.
+      #
+      # System-wide packet capture (tcpdump -i any) was tried first and doesn't
+      # work on a shared GitHub Actions runner: the runner's own control-plane
+      # connection to github.com is itself ongoing HTTPS traffic throughout the
+      # whole job, unrelated to this command, and got captured as a false
+      # positive. strace, scoped to this one process's own connect() syscalls,
+      # has no such cross-contamination -- it only sees what diagnyx itself did.
+
+      - name: DX-053 - diagnyx ask against a local provider makes no outbound connections except to it
+        run: |
+          sudo apt-get install -y -qq strace > /dev/null
+          mkdir -p /tmp/dx053
+          export DIAGNYX_LLM_API_KEY=test-key-not-real
+          export DIAGNYX_CONFIG=/tmp/dx044/ask.json
+          sudo -E strace -f -e trace=connect -o /tmp/dx053/connect.log \
+            ./publish/diagnyx ask "why did the payment service fail?" > /dev/null
+          sudo chmod 644 /tmp/dx053/connect.log
+
+          CONNECT_CALLS=$(grep -c 'connect(' /tmp/dx053/connect.log || true)
+          if [ "$CONNECT_CALLS" -eq 0 ]; then
+            echo "expected at least one connect() call (to the local mock LLM server), found none:"
+            cat /tmp/dx053/connect.log
+            exit 1
+          fi
+
+          NON_LOOPBACK=$(grep 'connect(' /tmp/dx053/connect.log \
+            | grep -v '127\.\|"::1"\|AF_UNIX\|AF_NETLINK' || true)
+          if [ -n "$NON_LOOPBACK" ]; then
+            echo "expected every outbound connection to be loopback-only while asking against a local-only provider, found:"
+            echo "$NON_LOOPBACK"
+            exit 1
+          fi
+
       - name: DX-044 - stop mock LLM server
         if: always()
         run: kill "$(cat /tmp/dx044/collector.pid)" 2>/dev/null || true
