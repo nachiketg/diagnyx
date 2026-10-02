@@ -6,20 +6,26 @@ namespace Diagnyx.Core.Llm;
 
 /// <summary>
 /// Minimal client for any OpenAI-compatible chat completions endpoint --
-/// OpenAI itself, and the many other providers and self-hosted/local
+/// OpenAI itself, and the many other hosted providers and self-hosted/local
 /// runtimes (Ollama, LM Studio, ...) that speak the same request/response
-/// shape. No vendor-specific SDK; multi-provider support beyond this shape
-/// is a separate, later concern.
+/// shape. No vendor-specific SDK: switching providers is entirely a
+/// baseUrl/model/API-key config change, never a code change.
 /// </summary>
 internal static class LlmClient
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
     /// <summary>Sends one chat completion request and returns the assistant's answer and citations.</summary>
+    /// <param name="apiKey">
+    /// Omitted (null/blank) for providers that don't need one -- most
+    /// local/self-hosted runtimes (Ollama, LM Studio, ...) accept requests
+    /// with no Authorization header at all. Hosted providers do need one;
+    /// the header is only sent when a key is actually given.
+    /// </param>
     /// <exception cref="InvalidOperationException">
     /// The request failed, or the response wasn't a recognizable chat completion.
     /// </exception>
-    public static AskResult Ask(string baseUrl, string model, string apiKey, string userMessage)
+    public static AskResult Ask(string baseUrl, string model, string? apiKey, string userMessage)
     {
         var url = BuildUrl(baseUrl);
         var body = BuildRequestBody(model, userMessage);
@@ -29,7 +35,8 @@ internal static class LlmClient
         {
             Content = new StringContent(body, Encoding.UTF8, "application/json"),
         };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        if (!string.IsNullOrWhiteSpace(apiKey))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
         using var response = Send(client, request);
         var responseText = new StreamReader(response.Content.ReadAsStream()).ReadToEnd();

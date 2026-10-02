@@ -10,7 +10,7 @@ Quote the question as one argument. `--since`, `--until`, and `--source` narrow 
 
 ## Setup
 
-`ask` needs an LLM configured — see [`llm` in `docs/CONFIG.md`](CONFIG.md#llm):
+`ask` needs an LLM configured — see [`llm` in `docs/CONFIG.md`](CONFIG.md#llm). `baseUrl` can point at any endpoint that speaks the OpenAI-compatible chat completions shape, hosted or self-hosted/local — switching between them is purely a config change:
 
 ```json
 {
@@ -25,7 +25,18 @@ Quote the question as one argument. `--since`, `--until`, and `--source` narrow 
 export DIAGNYX_LLM_API_KEY=sk-...
 ```
 
-`baseUrl` can point at any endpoint that speaks the OpenAI-compatible chat completions shape — OpenAI itself, another hosted provider, or a self-hosted/local runtime (Ollama, LM Studio, ...). The API key is always an environment variable, never a config field, so it's never something that could end up committed inside `diagnyx.config.json`.
+Or, pointed at a local Ollama instead, with no API key at all:
+
+```json
+{
+  "llm": {
+    "baseUrl": "http://localhost:11434/v1",
+    "model": "llama3.2"
+  }
+}
+```
+
+The API key is always an environment variable, never a config field, so it's never something that could end up committed inside `diagnyx.config.json`. It's also optional: `DIAGNYX_LLM_API_KEY` is sent as a `Bearer` token when set, and omitted entirely when not — most local/self-hosted runtimes don't check it. A hosted provider that requires one rejects the request itself if it's missing, which surfaces as `LLM request failed: ...` below.
 
 ## How it works
 
@@ -71,9 +82,8 @@ diagnyx ask "why are checkouts failing?" --source checkout --since 1h
 | `invalid --since/--until value '...'` | The value wasn't a valid [time value](QUERY.md#time-values). | Use a relative duration (`30m`, `2h`, `7d`) or an ISO 8601 timestamp. |
 | `--since must not be later than --until` | The range is inverted. | Swap or fix the two values. |
 | `no LLM is configured` | `llm.baseUrl` and/or `llm.model` are missing from config. | Add both — see [Setup](#setup). |
-| `the DIAGNYX_LLM_API_KEY environment variable is not set` | The env var isn't set in this shell. | `export DIAGNYX_LLM_API_KEY=...`. |
 | `... sink is write-only, so 'diagnyx ask' can't read from it` | The configured sink is `otlp` or `loki`. | Use a queryable sink (`file`, `sqlite`, `postgres`, `mysql`, `mssql`), or [fan out](CONFIG.md#sinktypes-fan-out) to one alongside your export sink. |
 | `no log entries found to answer this question` | Retrieval found nothing to send — including everything being filtered out by `--since`/`--until`/`--source`. | Check the sink actually has data in that range/source; try a broader question or scope. |
-| `LLM request failed: ...` | The HTTP request itself failed (unreachable endpoint, timeout, non-2xx response) or the response wasn't in the expected shape. | Check `llm.baseUrl` is correct and reachable, and that the API key is valid. |
+| `LLM request failed: ...` | The HTTP request itself failed (unreachable endpoint, timeout, non-2xx response) or the response wasn't in the expected shape. This includes an authentication failure from a hosted provider if `DIAGNYX_LLM_API_KEY` is missing or wrong. | Check `llm.baseUrl` is correct and reachable, and that the API key (if the provider needs one) is set and valid. |
 
 Like every other Diagnyx command, `ask` exits `1` on any failure and prints nothing to stdout — the natural-language answer only appears on success.

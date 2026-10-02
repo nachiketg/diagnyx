@@ -1703,11 +1703,6 @@ jobs:
             2>/tmp/dx044/err.txt && exit 1 || true
           grep -qi "no log entries found" /tmp/dx044/err.txt
 
-          unset DIAGNYX_LLM_API_KEY
-          DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx ask "why?" \
-            2>/tmp/dx044/err.txt && exit 1 || true
-          grep -qi "DIAGNYX_LLM_API_KEY" /tmp/dx044/err.txt
-
       - name: DX-044 - ask surfaces LLM connection and response failures clearly
         run: |
           printf '{"sink":{"type":"file","file":{"path":"/tmp/dx044/ask.log"}},"llm":{"baseUrl":"http://127.0.0.1:19999","model":"x"}}' \
@@ -1809,6 +1804,82 @@ jobs:
           DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx ask --source checkout "why did the payment service fail?" \
             > /tmp/dx044/interleaved_output.txt
           grep -q "Cited entries:" /tmp/dx044/interleaved_output.txt
+
+      # ── DX-047: make LLM provider configurable ──────────────────────────────────
+      # Proves "switching providers is a config change, not a code change" with two
+      # real mock servers: one simulating a hosted provider that enforces an API
+      # key, one simulating a local/self-hosted provider that needs none -- the
+      # existing DX-044 mock, still running, which never checked auth at all.
+
+      - name: DX-047 - start a second mock LLM server that enforces an API key
+        run: |
+          mkdir -p /tmp/dx047
+          cat > /tmp/dx047/mock_hosted_llm.py <<'PY'
+          import http.server
+          import json
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  length = int(self.headers.get('Content-Length', 0))
+                  self.rfile.read(length)
+
+                  if self.headers.get('Authorization', '') != 'Bearer test-hosted-key':
+                      self.send_response(401)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps({"error": {"message": "invalid api key"}}).encode())
+                      return
+
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(json.dumps({
+                      "choices": [{"message": {"role": "assistant", "content": json.dumps({"answer": "hosted provider ok", "citedEntries": [1]})}}]
+                  }).encode())
+
+              def log_message(self, *args):
+                  pass
+
+          http.server.HTTPServer(('127.0.0.1', 4414), Handler).serve_forever()
+          PY
+          nohup python3 /tmp/dx047/mock_hosted_llm.py > /tmp/dx047/server.log 2>&1 &
+          echo $! > /tmp/dx047/server.pid
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null -X POST -d '{}' http://127.0.0.1:4414/chat/completions && break
+            sleep 0.25
+          done
+
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx044/ask.log"}},"llm":{"baseUrl":"http://127.0.0.1:4414","model":"test-model"}}' \
+            > /tmp/dx047/hosted.json
+
+      - name: DX-047 - ask works against a hosted-style provider when the API key is set
+        run: |
+          OUTPUT=$(DIAGNYX_LLM_API_KEY=test-hosted-key DIAGNYX_CONFIG=/tmp/dx047/hosted.json \
+            ./publish/diagnyx ask "why did the payment service fail?")
+          echo "$OUTPUT" | grep -qx "hosted provider ok" \
+            || { echo "expected the hosted provider's answer: $OUTPUT"; exit 1; }
+
+      - name: DX-047 - ask surfaces a clear error when a hosted provider rejects a missing API key
+        run: |
+          DIAGNYX_CONFIG=/tmp/dx047/hosted.json ./publish/diagnyx ask "why did the payment service fail?" \
+            2>/tmp/dx047/err.txt && exit 1 || true
+          grep -qi "LLM request failed" /tmp/dx047/err.txt
+          grep -q "401" /tmp/dx047/err.txt
+
+      - name: DX-047 - ask works against a local-style provider with no API key at all
+        run: |
+          # Switches providers by pointing DIAGNYX_CONFIG at the existing DX-044
+          # mock (still running on a different port, never checking auth) instead
+          # of the hosted one above -- a config change only, no rebuild, no code
+          # change, and DIAGNYX_LLM_API_KEY is explicitly unset for this call.
+          unset DIAGNYX_LLM_API_KEY
+          OUTPUT=$(DIAGNYX_CONFIG=/tmp/dx044/ask.json ./publish/diagnyx ask "why did the payment service fail?")
+          echo "$OUTPUT" | grep -q "Cited entries:" \
+            || { echo "expected the local-style provider to answer with no API key set: $OUTPUT"; exit 1; }
+
+      - name: DX-047 - stop mock hosted LLM server
+        if: always()
+        run: kill "$(cat /tmp/dx047/server.pid)" 2>/dev/null || true
 
       - name: DX-044 - stop mock LLM server
         if: always()
