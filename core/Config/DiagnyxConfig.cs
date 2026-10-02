@@ -154,6 +154,17 @@ internal sealed class LlmConfig
     /// PromptBuilder.DefaultMaxContextChars.
     /// </summary>
     public int? MaxContextChars { get; set; }
+
+    /// <summary>
+    /// Context JSON key names to mask before log entries are sent to the
+    /// LLM (see ContextRedactor) -- e.g. ["email", "apiKey", "ssn"].
+    /// Matched case-insensitively, at any depth within a context object.
+    /// Unset or empty means no redaction, same as before this existed:
+    /// this is opt-in, not an automatic blanket redaction. Only applies to
+    /// the outbound LLM request; "diagnyx query"/"diagnyx retrieve" output
+    /// is local and untouched.
+    /// </summary>
+    public List<string>? RedactContextFields { get; set; }
 }
 
 internal sealed class DefaultsConfig
