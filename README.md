@@ -31,7 +31,7 @@ diagnyx/
 
 ## Quick Start
 
-> **Note:** v1 is under active development. Releases are published to [GitHub Releases](https://github.com/nachiketg/diagnyx/releases), NuGet, and npm as they're cut — the install commands below work today.
+> **Note:** Diagnyx is released and stable as of **v1.0.0** — structured logging, OpenTelemetry/Loki/Grafana integration, and AI-assisted root-cause analysis (`diagnyx ask`) are all shipped. Releases are published to [GitHub Releases](https://github.com/nachiketg/diagnyx/releases), NuGet, and npm; the install commands below work today.
 
 ### .NET
 
@@ -155,6 +155,7 @@ See [docs/CONFIG.md](docs/CONFIG.md#metrics) for details.
 | **v1** | Structured logger, file sink, RDBMS sinks (SQLite/Postgres/MySQL/MSSQL), .NET and Node.js SDKs | Done |
 | **Phase 2** | OpenTelemetry alignment, Grafana/Loki exporter, observability dashboards | Done |
 | **Phase 3** | AI-assisted root-cause analysis (`diagnyx ask`) — relevance-ranked retrieval, LLM-backed answers with cited sources, configurable/local providers, redaction, and a setup guide | Done |
+| **Phase 4** | Additional language SDKs — Python, Go, Java | Planned |
 
 ## Contributing
 
