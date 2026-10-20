@@ -20,7 +20,7 @@ Before your first release, add these secrets to the GitHub repository (`Settings
    ./scripts/bump-version.sh 0.2.0
    ```
 
-   This updates `VERSION`, `core/Diagnyx.Core.csproj`, `packages/dotnet/Diagnyx.Client.csproj`, `packages/node/package.json`, and `packages/python/pyproject.toml`.
+   This updates `VERSION`, `core/Diagnyx.Core.csproj`, `packages/dotnet/Diagnyx.Client.csproj`, `packages/node/package.json`, `packages/python/pyproject.toml`, and the scope version in `docs/examples/otlp-log-export.json` (CI's DX-029 step diffs that sample against `scripts/verify-otel-mapping.js` output, which stamps in `VERSION`, so a stale sample fails the build).
 
 2. **Commit and tag:**
 
