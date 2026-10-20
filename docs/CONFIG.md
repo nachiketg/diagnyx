@@ -183,6 +183,17 @@ Only read when `sink.type` is `"sqlite"`.
 
 The `diagnyx_logs` table is created automatically if it does not exist. All columns use SQLite `TEXT` affinity, which is flexible and requires no driver configuration.
 
+#### The SQLite native library (`~/.diagnyx/native/`)
+
+The SQLite sink and the [`metrics`](#metrics) counter store both use SQLite through a native library. To keep `diagnyx` a single self-contained file (the only file the GitHub Release, NuGet, npm, and PyPI distributions ship), that library is embedded in the binary. The first time a command needs SQLite, the binary extracts it to `~/.diagnyx/native/e_sqlite3-<hash>/` (`libe_sqlite3.so` on Linux, `libe_sqlite3.dylib` on macOS, `e_sqlite3.dll` on Windows) and loads it from there. Some things to know:
+
+- **No setup needed.** Extraction is automatic. Commands that never touch SQLite (the `file`, `postgres`, `mysql`, `mssql`, `otlp`, and `loki` sinks with metrics off, or `--version`) never create the folder.
+- **Versioned by content.** `<hash>` is derived from the library's bytes, so different `diagnyx` versions use separate folders and never overwrite each other. Older folders can be deleted safely; whatever is still needed is re-extracted on the next run.
+- **Verified before use.** An existing file is loaded only if it matches the embedded copy byte for byte; anything else is replaced. On Linux and macOS the folder is created readable by your user only (`0700`).
+- **Read-only home directory?** If extraction fails, the command prints `warning: could not extract the embedded SQLite library: ...` and falls back to looking for the library next to the binary, the way a `dotnet build` output finds it.
+
+This was fixed in DX-060: the v1.0.0 binaries shipped without the library, so the SQLite sink failed and metrics were never recorded, both with `A type initializer threw an exception`.
+
 ---
 
 ### `sink.postgres`
@@ -320,7 +331,7 @@ Independent of `sink.type` — metrics are tracked (if enabled) no matter which 
 | Key | Type | Required | Default | Description |
 |-----|------|----------|---------|-------------|
 | `enabled` | `boolean` | No | `false` | Opt-in. When `false` (the default), `diagnyx log` does no metrics-related work at all — no file is created. |
-| `path` | `string` | No | `~/.diagnyx/metrics.db` | Path to a local SQLite counter store. `~` is expanded. Created automatically on first write. |
+| `path` | `string` | No | `~/.diagnyx/metrics.db` | Path to a local SQLite counter store. `~` is expanded. Created automatically on first write. Uses the same embedded SQLite library as the SQLite sink; see [The SQLite native library](#the-sqlite-native-library-diagnyxnative). |
 
 When enabled, every `diagnyx log` call increments a `(level, source)` counter in the store — a side effect independent of whether the sink write itself succeeds. A counter-store failure is printed as a `warning:` to stderr; it never changes the command's exit code.
 

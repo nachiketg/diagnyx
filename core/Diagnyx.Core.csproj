@@ -33,4 +33,31 @@
     <EmbeddedResource Include="Web/AskPage.css" />
   </ItemGroup>
 
+  <!--
+    DX-060: Native AOT leaves SQLitePCLRaw's native e_sqlite3 library as a
+    separate file beside the executable, but every distribution (GitHub
+    Release, NuGet, npm, PyPI) ships only the executable, so SQLite failed
+    with "A type initializer threw an exception". For AOT publishes, embed
+    the library for the target RID instead; Native/EmbeddedSqlite.cs
+    extracts and loads it on first use. Every "dotnet publish" of this
+    project is RID-specific, since PublishAot makes the SDK infer the host
+    RID when -r is omitted. RID-less builds (dotnet build/run) are untouched.
+  -->
+  <Target Name="EmbedNativeSqlite"
+          AfterTargets="ResolvePackageAssets"
+          Condition="'$(PublishAot)' == 'true' and '$(RuntimeIdentifier)' != ''">
+    <ItemGroup>
+      <_DiagnyxNativeSqlite Include="@(NativeCopyLocalItems)"
+                            Condition="'%(Filename)' == 'libe_sqlite3' or '%(Filename)' == 'e_sqlite3'" />
+      <EmbeddedResource Include="@(_DiagnyxNativeSqlite)"
+                        LogicalName="native/%(Filename)%(Extension)"
+                        WithCulture="false"
+                        Type="Non-Resx" />
+    </ItemGroup>
+    <!-- Fail the build rather than silently ship a binary without SQLite
+         if a package update ever changes where the library comes from. -->
+    <Error Condition="'@(_DiagnyxNativeSqlite)' == ''"
+           Text="DX-060: no native e_sqlite3 library found for $(RuntimeIdentifier) to embed; SQLite would fail at runtime in the published binary." />
+  </Target>
+
 </Project>

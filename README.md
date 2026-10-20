@@ -13,7 +13,8 @@ diagnyx/
 ├── core/                   # Diagnyx Core CLI (.NET, published as Native AOT binary)
 ├── packages/
 │   ├── dotnet/             # diagnyx-dotnet — NuGet wrapper for .NET apps
-│   └── node/               # diagnyx-node — npm wrapper for Node.js apps
+│   ├── node/               # diagnyx-node — npm wrapper for Node.js apps
+│   └── python/             # diagnyx — PyPI wrapper for Python apps
 ├── docs/
 │   ├── SCHEMA.md           # Log entry JSON schema (the contract)
 │   ├── CONFIG.md           # Config file format reference
@@ -31,7 +32,7 @@ diagnyx/
 
 ## Quick Start
 
-> **Note:** Diagnyx is released and stable as of **v1.0.0** — structured logging, OpenTelemetry/Loki/Grafana integration, and AI-assisted root-cause analysis (`diagnyx ask`) are all shipped. Releases are published to [GitHub Releases](https://github.com/nachiketg/diagnyx/releases), NuGet, and npm; the install commands below work today.
+> **Note:** Diagnyx is released and stable as of **v1.0.0** — structured logging, OpenTelemetry/Loki/Grafana integration, and AI-assisted root-cause analysis (`diagnyx ask`) are all shipped. Releases are published to [GitHub Releases](https://github.com/nachiketg/diagnyx/releases), NuGet, and npm; the install commands below work today. The Python SDK is new in Phase 4 and ships to PyPI starting with the first release after v1.0.0.
 
 ### .NET
 
@@ -64,6 +65,22 @@ logger.error('Something went wrong', { errorCode: 500 });
 ```
 
 No separate CLI install needed on win-x64, linux-x64, or osx-arm64 — a `postinstall` step fetches the matching `diagnyx` binary automatically. See [packages/node/README.md](packages/node/README.md) for details.
+
+### Python
+
+```bash
+pip install diagnyx
+```
+
+```python
+from diagnyx import DiagnyxLogger
+
+logger = DiagnyxLogger("my-service")
+logger.info("App started", {"userId": 42})
+logger.error("Something went wrong", {"errorCode": 500})
+```
+
+No separate CLI install needed on win-x64, linux-x64, or osx-arm64 — each platform's wheel bundles the matching `diagnyx` binary. Python 3.9+, no runtime dependencies. See [packages/python/README.md](packages/python/README.md) for details, including trace context via `contextvars` and OpenTelemetry.
 
 ## Log Format
 
@@ -100,24 +117,24 @@ Want an actual answer, not just the entries? `diagnyx ask "why did the payment s
   .NET app  ---->|                      |        |  File sink (default)        |
                  |  Diagnyx Core (CLI)  |------->|  JSON Lines log file        |
   Node.js app -->|                      |   |    +-----------------------------+
-                 +----------------------+   |
-        ^                    ^              |    +-----------------------------+
-        |                    |              +--->|  RDBMS sink (optional)      |
-  diagnyx-dotnet        diagnyx-node        |    |  SQLite / Postgres /        |
-  (NuGet wrapper)      (npm wrapper)        |    |  MySQL / MSSQL              |
-                                             |    +-----------------------------+
-                                             |
-                                             |    +-----------------------------+
-                                             +--->|  OTLP sink (optional)       |
-                                             |    |  any OTel-compatible        |
-                                             |    |  collector, via HTTP/JSON   |
-                                             |    +-----------------------------+
-                                             |
-                                             |    +-----------------------------+
-                                             +--->|  Loki sink (optional)       |
-                                                  |  push to Grafana Loki,      |
-                                                  |  queryable in Explore       |
-                                                  +-----------------------------+
+                 |                      |   |
+  Python app --->|                      |   |    +-----------------------------+
+                 +----------------------+   +--->|  RDBMS sink (optional)      |
+        ^              ^            ^       |    |  SQLite / Postgres /        |
+        |              |            |       |    |  MySQL / MSSQL              |
+  diagnyx-dotnet  diagnyx-node   diagnyx    |    +-----------------------------+
+  (NuGet)         (npm)          (PyPI)     |
+                                            |    +-----------------------------+
+                                            +--->|  OTLP sink (optional)       |
+                                            |    |  any OTel-compatible        |
+                                            |    |  collector, via HTTP/JSON   |
+                                            |    +-----------------------------+
+                                            |
+                                            |    +-----------------------------+
+                                            +--->|  Loki sink (optional)       |
+                                                 |  push to Grafana Loki,      |
+                                                 |  queryable in Explore       |
+                                                 +-----------------------------+
 ```
 
 The core CLI is a single cross-platform binary (Native AOT, no .NET runtime required). Language wrappers are thin shims that invoke the CLI — no logic lives in the wrappers.
@@ -155,7 +172,7 @@ See [docs/CONFIG.md](docs/CONFIG.md#metrics) for details.
 | **v1** | Structured logger, file sink, RDBMS sinks (SQLite/Postgres/MySQL/MSSQL), .NET and Node.js SDKs | Done |
 | **Phase 2** | OpenTelemetry alignment, Grafana/Loki exporter, observability dashboards | Done |
 | **Phase 3** | AI-assisted root-cause analysis (`diagnyx ask`) — relevance-ranked retrieval, LLM-backed answers with cited sources, configurable/local providers, redaction, and a setup guide | Done |
-| **Phase 4** | Additional language SDKs — Python, Go, Java | Planned |
+| **Phase 4** | Additional language SDKs — Python (done), Go, Java | In progress |
 
 ## Contributing
 

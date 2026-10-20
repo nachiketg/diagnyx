@@ -20,6 +20,14 @@ yarn-error.log*
 .pnp.js
 dist/
 
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist-python/
+packages/python/src/diagnyx/bin/
+
 # Diagnyx runtime
 *.log
 *.db

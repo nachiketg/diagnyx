@@ -42,6 +42,12 @@ sed -i.bak "s|\"version\": \"[^\"]*\"|\"version\": \"$VERSION\"|g" "$NODE_PKG"
 rm -f "$NODE_PKG.bak"
 echo "  packages/node/package.json"
 
+# 5. Python pyproject.toml
+PYTHON_PKG="$ROOT/packages/python/pyproject.toml"
+sed -i.bak "s|^version = \"[^\"]*\"|version = \"$VERSION\"|" "$PYTHON_PKG"
+rm -f "$PYTHON_PKG.bak"
+echo "  packages/python/pyproject.toml"
+
 echo ""
 echo "Done. Review the diff, then commit and tag:"
 echo "  git add -A"

@@ -47,6 +47,23 @@ jobs:
             -p:Version="$VERSION" \
             -o publish
 
+      # DX-060: every distribution ships only this one file, so prove SQLite
+      # works from it alone (no native library beside it) on each platform
+      # before anything is published.
+      - name: Verify the binary works on its own (SQLite sink and metrics)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/alone"
+          cp publish/${{ matrix.binary }} "$RUNNER_TEMP/alone/"
+          printf '{"sink":{"type":"sqlite","sqlite":{"path":"./verify.db"}},"metrics":{"enabled":true,"path":"./metrics.db"}}' \
+            > "$RUNNER_TEMP/alone/diagnyx.config.json"
+          cd "$RUNNER_TEMP/alone"
+          ./${{ matrix.binary }} log --level info --message "release verification" --source release 2> stderr.txt
+          cat stderr.txt
+          test ! -s stderr.txt
+          test -f verify.db
+          test -f metrics.db
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -73,6 +90,11 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -126,3 +148,15 @@ jobs:
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Build and publish PyPI package (DX-057)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s|^version = \"[^\"]*\"|version = \"$VERSION\"|" packages/python/pyproject.toml
+          python -m pip install build twine
+          packages/python/scripts/build-dists.sh . dist-python
+          python -m twine check dist-python/*
+          python -m twine upload --skip-existing dist-python/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
