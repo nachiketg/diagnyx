@@ -12,9 +12,9 @@
   <!-- NuGet package metadata (DX-019) -->
   <PropertyGroup>
     <PackageId>diagnyx-dotnet</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Authors>Nachiket Ghatole</Authors>
-    <Description>Thin .NET client for the Diagnyx structured logging CLI. Provides DiagnyxLogger, which calls the diagnyx binary to write structured JSON log entries to any configured sink (file, SQLite, PostgreSQL, MySQL, SQL Server).</Description>
+    <Description>Thin .NET client for the Diagnyx structured logging CLI. Provides DiagnyxLogger, which calls the diagnyx binary to write structured JSON log entries to any configured sink (file, SQLite, PostgreSQL, MySQL, SQL Server, OTLP, Loki).</Description>
     <PackageTags>logging;structured-logging;diagnyx;observability;json;ndjson</PackageTags>
     <PackageProjectUrl>https://github.com/nachiketg/diagnyx</PackageProjectUrl>
     <RepositoryUrl>https://github.com/nachiketg/diagnyx</RepositoryUrl>

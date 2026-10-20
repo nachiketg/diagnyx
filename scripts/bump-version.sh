@@ -48,6 +48,13 @@ sed -i.bak "s|^version = \"[^\"]*\"|version = \"$VERSION\"|" "$PYTHON_PKG"
 rm -f "$PYTHON_PKG.bak"
 echo "  packages/python/pyproject.toml"
 
+# 6. OTLP sample export: scripts/verify-otel-mapping.js stamps VERSION into
+#    the scope version, and CI (DX-029) diffs its output against this file.
+OTLP_SAMPLE="$ROOT/docs/examples/otlp-log-export.json"
+sed -i.bak "s|\"version\": \"[^\"]*\"|\"version\": \"$VERSION\"|" "$OTLP_SAMPLE"
+rm -f "$OTLP_SAMPLE.bak"
+echo "  docs/examples/otlp-log-export.json"
+
 echo ""
 echo "Done. Review the diff, then commit and tag:"
 echo "  git add -A"

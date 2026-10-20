@@ -32,7 +32,7 @@ diagnyx/
 
 ## Quick Start
 
-> **Note:** Diagnyx is released and stable as of **v1.0.0** — structured logging, OpenTelemetry/Loki/Grafana integration, and AI-assisted root-cause analysis (`diagnyx ask`) are all shipped. Releases are published to [GitHub Releases](https://github.com/nachiketg/diagnyx/releases), NuGet, and npm; the install commands below work today. The Python SDK is new in Phase 4 and ships to PyPI starting with the first release after v1.0.0.
+> **Note:** Diagnyx is released and stable — the latest release is **v1.1.0**. Structured logging, OpenTelemetry/Loki/Grafana integration, and AI-assisted root-cause analysis (`diagnyx ask`) are all shipped, and v1.1.0 adds the Python SDK. Releases are published to [GitHub Releases](https://github.com/nachiketg/diagnyx/releases), NuGet, npm, and PyPI; the install commands below work today. Using the SQLite sink or metrics on v1.0.0? Upgrade: v1.0.0's binaries couldn't load SQLite (fixed in v1.1.0, see [CONFIG.md](docs/CONFIG.md#the-sqlite-native-library-diagnyxnative)).
 
 ### .NET
 

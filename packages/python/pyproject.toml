@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "diagnyx"
-version = "1.0.0"
+version = "1.1.0"
 description = "Thin Python client for the Diagnyx structured logging CLI"
 readme = "README.md"
 requires-python = ">=3.9"

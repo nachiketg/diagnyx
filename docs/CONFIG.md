@@ -192,7 +192,7 @@ The SQLite sink and the [`metrics`](#metrics) counter store both use SQLite thro
 - **Verified before use.** An existing file is loaded only if it matches the embedded copy byte for byte; anything else is replaced. On Linux and macOS the folder is created readable by your user only (`0700`).
 - **Read-only home directory?** If extraction fails, the command prints `warning: could not extract the embedded SQLite library: ...` and falls back to looking for the library next to the binary, the way a `dotnet build` output finds it.
 
-This was fixed in DX-060: the v1.0.0 binaries shipped without the library, so the SQLite sink failed and metrics were never recorded, both with `A type initializer threw an exception`.
+This was fixed in v1.1.0 (DX-060): the v1.0.0 binaries shipped without the library, so the SQLite sink failed and metrics were never recorded, both with `A type initializer threw an exception`.
 
 ---
 
