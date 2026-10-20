@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "diagnyx"
+version = "1.0.0"
+description = "Thin Python client for the Diagnyx structured logging CLI"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Nachiket Ghatole" }]
+keywords = ["logging", "structured-logging", "diagnyx", "observability", "json", "ndjson"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Logging",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/nachiketg/diagnyx"
+Repository = "https://github.com/nachiketg/diagnyx"
+Issues = "https://github.com/nachiketg/diagnyx/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/diagnyx"]
+# The platform binary staged by scripts/build-dists.sh is gitignored, so it
+# must be listed explicitly to be picked up.
+artifacts = ["src/diagnyx/bin/*"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/diagnyx", "tests", "hatch_build.py", "README.md", "pyproject.toml"]
+exclude = ["src/diagnyx/bin"]
