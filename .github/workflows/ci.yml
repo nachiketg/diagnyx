@@ -504,6 +504,129 @@ jobs:
           grep -q "DX020_BUNDLED_BINARY_INVOKED" /tmp/dx020_bundled_out.txt
           rm -rf packages/node/bin
 
+      # ── DX-057: Python SDK package ───────────────────────────────────────────
+
+      # The package's floor (requires-python >= 3.9), so syntax or stdlib use
+      # newer than that fails here rather than for users.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: DX-057 - Python SDK installs with pip (zero runtime dependencies)
+        run: |
+          python -m venv /tmp/dx057-venv
+          /tmp/dx057-venv/bin/pip install ./packages/python
+          /tmp/dx057-venv/bin/pip list --format=freeze > /tmp/dx057_freeze.txt
+          grep -q '^diagnyx==' /tmp/dx057_freeze.txt
+          # Only diagnyx and the venv's own tooling: no dependencies pulled in.
+          test "$(grep -vcE '^(diagnyx|pip|setuptools)==' /tmp/dx057_freeze.txt)" -eq 0
+
+      - name: DX-057 - Python SDK smoke test via CLI binary
+        env:
+          DIAGNYX_PATH: ./publish/diagnyx
+          DIAGNYX_CONFIG: /tmp/dx057.json
+        run: |
+          mkdir -p /tmp/dx057
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx057/sdk.log"}}}' \
+            > /tmp/dx057.json
+          /tmp/dx057-venv/bin/python packages/python/tests/smoke.py
+          grep '"message":"python SDK smoke test"' /tmp/dx057/sdk.log \
+            | jq -e '.level == "info" and .source == "sdk-test-python"
+                     and .context.ci == true and .context.at == "2026-01-02T03:04:05+00:00"'
+
+      - name: DX-057 - Python SDK accepts explicit, ambient (contextvars), and OpenTelemetry trace context
+        env:
+          DIAGNYX_PATH: ./publish/diagnyx
+          DIAGNYX_CONFIG: /tmp/dx057-trace.json
+        run: |
+          /tmp/dx057-venv/bin/pip install opentelemetry-api
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx057/trace.log"}}}' \
+            > /tmp/dx057-trace.json
+          /tmp/dx057-venv/bin/python packages/python/tests/trace_context_smoke.py
+          grep '"message":"explicit trace context"' /tmp/dx057/trace.log \
+            | jq -e '.traceId == "4bf92f3577b34da6a3ce929d0e0e4736" and .spanId == "00f067aa0ba902b7"'
+          grep '"message":"ambient trace context after await"' /tmp/dx057/trace.log \
+            | jq -e '.traceId == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" and .spanId == "bbbbbbbbbbbbbbbb"'
+          grep '"message":"ambient trace context in child task"' /tmp/dx057/trace.log \
+            | jq -e '.traceId == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" and .spanId == "bbbbbbbbbbbbbbbb"'
+          grep '"message":"no trace context outside the scope"' /tmp/dx057/trace.log \
+            | jq -e '.traceId == null and .spanId == null'
+          grep '"message":"opentelemetry span trace context"' /tmp/dx057/trace.log \
+            | jq -e '.traceId == "cccccccccccccccccccccccccccccccc" and .spanId == "dddddddddddddddd"'
+          /tmp/dx057-venv/bin/pip uninstall -y opentelemetry-api
+
+      - name: DX-057 - Python SDK fails gracefully when the binary cannot be resolved
+        run: |
+          code=0
+          env -u DIAGNYX_PATH /tmp/dx057-venv/bin/python -c '
+          import sys
+          from diagnyx import DiagnyxLogger
+          sys.exit(DiagnyxLogger("ci").info("hello"))
+          ' 2>/tmp/dx057_missing_err.txt || code=$?
+          test "$code" -eq 1
+          grep -qi "diagnyx: warning: diagnyx binary not found" /tmp/dx057_missing_err.txt
+          ! grep -q "Traceback" /tmp/dx057_missing_err.txt
+
+      - name: DX-057 - Python SDK fails gracefully when the binary fails to start
+        env:
+          DIAGNYX_PATH: /tmp/does-not-exist/diagnyx
+        run: |
+          code=0
+          /tmp/dx057-venv/bin/python -c '
+          import sys
+          from diagnyx import DiagnyxLogger
+          sys.exit(DiagnyxLogger("ci").info("hello"))
+          ' 2>/tmp/dx057_start_err.txt || code=$?
+          test "$code" -eq 1
+          grep -qi "diagnyx: warning: failed to invoke diagnyx cli" /tmp/dx057_start_err.txt
+          ! grep -q "Traceback" /tmp/dx057_start_err.txt
+
+      - name: DX-057 - Python SDK drops a non-serializable context with a warning, not a crash
+        env:
+          DIAGNYX_PATH: ./publish/diagnyx
+        run: |
+          code=0
+          /tmp/dx057-venv/bin/python -c '
+          import sys
+          from diagnyx import DiagnyxLogger
+          ctx = {}
+          ctx["self"] = ctx
+          sys.exit(DiagnyxLogger("ci").info("hello", ctx))
+          ' 2>/tmp/dx057_ctx_err.txt || code=$?
+          test "$code" -eq 1
+          grep -qi "diagnyx: warning: context is not JSON-serializable" /tmp/dx057_ctx_err.txt
+          ! grep -q "Traceback" /tmp/dx057_ctx_err.txt
+
+      - name: DX-057 - build sdist, pure wheel, and platform wheels bundling the binary
+        run: |
+          python -m pip install build
+          mkdir -p /tmp/dx057-bins
+          echo fake-win > /tmp/dx057-bins/diagnyx-win-x64.exe
+          printf '#!/bin/bash\necho "DX057_BUNDLED_BINARY_INVOKED"\nexit 0\n' > /tmp/dx057-bins/diagnyx-linux-x64
+          cp /tmp/dx057-bins/diagnyx-linux-x64 /tmp/dx057-bins/diagnyx-osx-arm64
+          packages/python/scripts/build-dists.sh /tmp/dx057-bins /tmp/dx057-dist
+          cd /tmp/dx057-dist
+          unzip -l diagnyx-*-py3-none-win_amd64.whl             | grep -q 'diagnyx/bin/diagnyx.exe'
+          unzip -l diagnyx-*-py3-none-manylinux_2_34_x86_64.whl | grep -q 'diagnyx/bin/diagnyx$'
+          unzip -l diagnyx-*-py3-none-macosx_11_0_arm64.whl     | grep -q 'diagnyx/bin/diagnyx$'
+          zipinfo diagnyx-*-py3-none-manylinux_2_34_x86_64.whl diagnyx/bin/diagnyx | grep -q '^-rwx'
+          ! unzip -l diagnyx-*-py3-none-any.whl | grep -q 'diagnyx/bin/'
+          ! tar tzf diagnyx-*.tar.gz | grep -q 'diagnyx/bin/'
+          # The staged binary is cleaned up, never left in the source tree.
+          test ! -e "$GITHUB_WORKSPACE/packages/python/src/diagnyx/bin"
+
+      - name: DX-057 - DiagnyxLogger resolves the binary bundled in the platform wheel
+        run: |
+          python -m venv /tmp/dx057-wheel-venv
+          /tmp/dx057-wheel-venv/bin/pip install /tmp/dx057-dist/diagnyx-*-py3-none-manylinux_2_34_x86_64.whl
+          env -u DIAGNYX_PATH /tmp/dx057-wheel-venv/bin/python -c '
+          import sys
+          from diagnyx import DiagnyxLogger
+          sys.exit(DiagnyxLogger("ci").info("hello"))
+          ' > /tmp/dx057_bundled_out.txt
+          grep -q "DX057_BUNDLED_BINARY_INVOKED" /tmp/dx057_bundled_out.txt
+
       # ── DX-030/DX-031: OTLP sink, configurable via config file only ─────────
 
       - name: DX-030 - start mock OTLP/HTTP collector

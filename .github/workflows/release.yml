@@ -74,6 +74,11 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -126,3 +131,15 @@ jobs:
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Build and publish PyPI package (DX-057)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s|^version = \"[^\"]*\"|version = \"$VERSION\"|" packages/python/pyproject.toml
+          python -m pip install build twine
+          packages/python/scripts/build-dists.sh . dist-python
+          python -m twine check dist-python/*
+          python -m twine upload --skip-existing dist-python/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
