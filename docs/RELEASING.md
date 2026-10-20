@@ -33,6 +33,7 @@ Before your first release, add these secrets to the GitHub repository (`Settings
 
 3. **GitHub Actions takes over** — the `release.yml` workflow triggers on the `v*` tag and:
    - Builds Native AOT binaries for `linux-x64`, `win-x64`, `osx-arm64` (each with the version baked in via `-p:Version=<version>`)
+   - Verifies each binary works on its own, copied into an empty folder, by writing to the SQLite sink with metrics enabled (DX-060). The SQLite native library is embedded in the binary and extracted at runtime (see [CONFIG.md](CONFIG.md#the-sqlite-native-library-diagnyxnative)); this check stops a release if that ever breaks again, before anything is published
    - Creates a GitHub Release with the three platform binaries attached and auto-generated release notes, named `diagnyx-win-x64.exe`, `diagnyx-linux-x64`, `diagnyx-osx-arm64`
    - Stages those same three binaries into `packages/dotnet/runtimes/{rid}/native/diagnyx.bin` so the NuGet package bundles them (DX-017)
    - Packs and pushes `diagnyx-dotnet` to NuGet.org (`NUGET_API_KEY`)
