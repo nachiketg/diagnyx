@@ -2,7 +2,9 @@
 
 Thin .NET client for the [Diagnyx](https://github.com/nachiketg/diagnyx) structured logging CLI.
 
-`DiagnyxLogger` calls the `diagnyx` binary in a subprocess, writing structured JSON log entries to any sink configured in `diagnyx.config.json` — file, SQLite, PostgreSQL, MySQL, or SQL Server.
+`DiagnyxLogger` calls the `diagnyx` binary in a subprocess, writing structured JSON log entries to any sink configured in `diagnyx.config.json` — file, SQLite, PostgreSQL, MySQL, SQL Server, OTLP, or Loki.
+
+> **Upgrading from 1.0.0?** If you use the SQLite sink or metrics, upgrade to 1.1.0 or later. The `diagnyx` binary bundled in 1.0.0 couldn't load its SQLite library, so SQLite writes failed and metrics were never recorded. See [DX-060](https://github.com/nachiketg/diagnyx/blob/main/docs/CONFIG.md#the-sqlite-native-library-diagnyxnative).
 
 ## Prerequisites
 
