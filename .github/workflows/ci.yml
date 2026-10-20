@@ -83,7 +83,9 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Build (framework-dependent)
+      # PublishAot makes the SDK infer the host RID when -r is omitted, so this
+      # is a real Native AOT linux-x64 build, the same as the release one.
+      - name: Build (Native AOT, host RID)
         run: dotnet publish core/Diagnyx.Core.csproj -c Release -o publish
 
       # ── Basic CLI ────────────────────────────────────────────────────────────
@@ -935,6 +937,68 @@ jobs:
       - name: DX-035 - stop metrics server
         if: always()
         run: kill "$(cat /tmp/dx035/server.pid)" 2>/dev/null || true
+
+      # ── DX-060: SQLite works from the binary alone, as every distribution ships it ─
+
+      # publish/ also holds libe_sqlite3.so, which hid this bug: releases ship
+      # only the executable. Copy it alone, with a fresh HOME so the embedded
+      # library has to be extracted from scratch.
+      - name: DX-060 - binary alone writes to the SQLite sink and records metrics, without warnings
+        run: |
+          mkdir -p /tmp/dx060/bin /tmp/dx060/home
+          cp publish/diagnyx /tmp/dx060/bin/
+          printf '{"sink":{"type":"sqlite","sqlite":{"path":"/tmp/dx060/logs.db"}},"metrics":{"enabled":true,"path":"/tmp/dx060/metrics.db"}}' \
+            > /tmp/dx060/config.json
+          for i in 1 2; do
+            HOME=/tmp/dx060/home DIAGNYX_CONFIG=/tmp/dx060/config.json \
+              /tmp/dx060/bin/diagnyx log --level info --message "dx060 entry $i" --source dx060 \
+              2>>/tmp/dx060/stderr.txt
+          done
+          cat /tmp/dx060/stderr.txt
+          test ! -s /tmp/dx060/stderr.txt
+          test "$(sqlite3 /tmp/dx060/logs.db "SELECT COUNT(*) FROM diagnyx_logs WHERE source='dx060'")" -eq 2
+          test "$(sqlite3 /tmp/dx060/metrics.db "SELECT count FROM diagnyx_metrics_counters WHERE source='dx060'")" -eq 2
+          ls /tmp/dx060/home/.diagnyx/native/e_sqlite3-*/libe_sqlite3.so
+          test "$(stat -c %a /tmp/dx060/home/.diagnyx/native/e_sqlite3-*)" = 700
+
+      - name: DX-060 - a corrupted extracted library is replaced, not loaded
+        run: |
+          echo corrupted > /tmp/dx060/home/.diagnyx/native/e_sqlite3-*/libe_sqlite3.so
+          HOME=/tmp/dx060/home DIAGNYX_CONFIG=/tmp/dx060/config.json \
+            /tmp/dx060/bin/diagnyx log --level warn --message "dx060 after corruption" --source dx060
+          test "$(sqlite3 /tmp/dx060/logs.db "SELECT COUNT(*) FROM diagnyx_logs WHERE source='dx060'")" -eq 3
+          cmp /tmp/dx060/home/.diagnyx/native/e_sqlite3-*/libe_sqlite3.so publish/libe_sqlite3.so
+
+      - name: DX-060 - concurrent first runs all succeed
+        run: |
+          mkdir -p /tmp/dx060/home2
+          for i in $(seq 1 20); do
+            ( HOME=/tmp/dx060/home2 DIAGNYX_CONFIG=/tmp/dx060/config.json \
+                /tmp/dx060/bin/diagnyx log --level info --message "concurrent $i" --source dx060-conc \
+                || echo "run $i failed" >> /tmp/dx060/conc_failures.txt ) &
+          done
+          wait
+          test ! -e /tmp/dx060/conc_failures.txt
+          test "$(sqlite3 /tmp/dx060/metrics.db "SELECT count FROM diagnyx_metrics_counters WHERE source='dx060-conc'")" -eq 20
+          # No leftover per-process temp files.
+          test "$(ls /tmp/dx060/home2/.diagnyx/native/e_sqlite3-*/ | wc -l)" -eq 1
+
+      - name: DX-060 - metrics serve from the binary alone reports the counts
+        run: |
+          HOME=/tmp/dx060/home DIAGNYX_CONFIG=/tmp/dx060/config.json \
+            /tmp/dx060/bin/diagnyx metrics serve --port 9465 &
+          echo $! > /tmp/dx060/server.pid
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null http://localhost:9465/metrics && break
+            sleep 0.25
+          done
+          curl -sf http://localhost:9465/metrics > /tmp/dx060/metrics.txt
+          grep -q 'diagnyx_log_entries_total{level="info",source="dx060"} 2' /tmp/dx060/metrics.txt
+          grep -q 'diagnyx_log_entries_total{level="warn",source="dx060"} 1' /tmp/dx060/metrics.txt
+
+      - name: DX-060 - stop metrics server
+        if: always()
+        run: kill "$(cat /tmp/dx060/server.pid)" 2>/dev/null || true
 
       # ── DX-036: diagnyx query ────────────────────────────────────────────────
       # One shared set of assertions runs against every queryable sink, so the
