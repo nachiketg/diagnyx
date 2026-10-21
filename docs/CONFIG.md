@@ -185,7 +185,7 @@ The `diagnyx_logs` table is created automatically if it does not exist. All colu
 
 #### The SQLite native library (`~/.diagnyx/native/`)
 
-The SQLite sink and the [`metrics`](#metrics) counter store both use SQLite through a native library. To keep `diagnyx` a single self-contained file (the only file the GitHub Release, NuGet, npm, and PyPI distributions ship), that library is embedded in the binary. The first time a command needs SQLite, the binary extracts it to `~/.diagnyx/native/e_sqlite3-<hash>/` (`libe_sqlite3.so` on Linux, `libe_sqlite3.dylib` on macOS, `e_sqlite3.dll` on Windows) and loads it from there. Some things to know:
+The SQLite sink and the [`metrics`](#metrics) counter store both use SQLite through a native library. To keep `diagnyx` a single self-contained file (the only file the GitHub Release, NuGet, npm, and PyPI distributions ship, and the one the Go SDK downloads), that library is embedded in the binary. The first time a command needs SQLite, the binary extracts it to `~/.diagnyx/native/e_sqlite3-<hash>/` (`libe_sqlite3.so` on Linux, `libe_sqlite3.dylib` on macOS, `e_sqlite3.dll` on Windows) and loads it from there. Some things to know:
 
 - **No setup needed.** Extraction is automatic. Commands that never touch SQLite (the `file`, `postgres`, `mysql`, `mssql`, `otlp`, and `loki` sinks with metrics off, or `--version`) never create the folder.
 - **Versioned by content.** `<hash>` is derived from the library's bytes, so different `diagnyx` versions use separate folders and never overwrite each other. Older folders can be deleted safely; whatever is still needed is re-extracted on the next run.

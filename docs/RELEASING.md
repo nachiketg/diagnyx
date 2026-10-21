@@ -1,6 +1,6 @@
 # Releasing Diagnyx
 
-All four packages (CLI binary, `diagnyx-dotnet` NuGet, `diagnyx-node` npm, `diagnyx` PyPI) are versioned together and released from a single git tag. The release workflow builds, publishes, and creates the GitHub Release automatically.
+All five packages (CLI binary, `diagnyx-dotnet` NuGet, `diagnyx-node` npm, `diagnyx` PyPI, and the Go module) are versioned together and released from a single git tag. The release workflow builds, publishes, and creates the GitHub Release automatically.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Before your first release, add these secrets to the GitHub repository (`Settings
    ./scripts/bump-version.sh 0.2.0
    ```
 
-   This updates `VERSION`, `core/Diagnyx.Core.csproj`, `packages/dotnet/Diagnyx.Client.csproj`, `packages/node/package.json`, `packages/python/pyproject.toml`, and the scope version in `docs/examples/otlp-log-export.json` (CI's DX-029 step diffs that sample against `scripts/verify-otel-mapping.js` output, which stamps in `VERSION`, so a stale sample fails the build).
+   This updates `VERSION`, `core/Diagnyx.Core.csproj`, `packages/dotnet/Diagnyx.Client.csproj`, `packages/node/package.json`, `packages/python/pyproject.toml`, `packages/go/version.go`, and the scope version in `docs/examples/otlp-log-export.json` (CI's DX-029 step diffs that sample against `scripts/verify-otel-mapping.js` output, which stamps in `VERSION`, so a stale sample fails the build).
 
 2. **Commit and tag:**
 
@@ -39,8 +39,9 @@ Before your first release, add these secrets to the GitHub repository (`Settings
    - Packs and pushes `diagnyx-dotnet` to NuGet.org (`NUGET_API_KEY`)
    - Publishes `diagnyx-node` to npmjs.com (`NPM_TOKEN`)
    - Builds and uploads `diagnyx` to PyPI (`PYPI_API_TOKEN`) via `packages/python/scripts/build-dists.sh` (DX-057): an sdist and a pure `py3-none-any` wheel with no binary, plus one wheel per platform bundling that platform's release binary as `diagnyx/bin/diagnyx[.exe]` — tagged `win_amd64`, `manylinux_2_34_x86_64`, and `macosx_11_0_arm64`. pip picks the most specific wheel for the installing machine, so supported platforms get the bundled binary and everything else falls back to `DIAGNYX_PATH`/PATH
+   - Tags the Go module as `packages/go/v<version>` on the same commit (DX-058) and asks `proxy.golang.org` to fetch it, so `go get` and pkg.go.dev see it right away. Go modules are published by git tag rather than uploaded, and a module in a subdirectory needs its directory as the tag prefix. Nothing needs a secret: the step pushes the tag with the workflow's own token. The Go SDK downloads its binary from the GitHub Release for `packages/go/version.go`'s `Version` on first use, so the step first checks that `Version` matches the release, and fails if the bump script wasn't run
 
-   The GitHub Release is created before the npm publish step runs, and must stay that way: `diagnyx-node`'s `postinstall` script (DX-020) downloads `diagnyx-{rid}[.exe]` from the GitHub Release tagged `v<version>` matching the installed package version, so a fresh `npm install` right after publish needs that release asset to already exist. If you ever rename the release asset files, update `packages/node/scripts/postinstall.js`'s `assetName()` and the asset table in `packages/python/scripts/build-dists.sh` to match.
+   The GitHub Release is created before the npm publish step runs, and must stay that way: `diagnyx-node`'s `postinstall` script (DX-020) downloads `diagnyx-{rid}[.exe]` from the GitHub Release tagged `v<version>` matching the installed package version, so a fresh `npm install` right after publish needs that release asset to already exist. If you ever rename the release asset files, update `packages/node/scripts/postinstall.js`'s `assetName()`, the asset table in `packages/python/scripts/build-dists.sh`, and `releaseAssets` in `packages/go/binary.go` to match.
 
    The Linux wheel's `manylinux_2_34` tag reflects the glibc symbol versions the Native AOT binary links against when built on `ubuntu-latest` (check with `strings diagnyx-linux-x64 | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1`). If the build runner image changes, re-check this and update the tag in `build-dists.sh`. pip trusts the tag at install time, so a tag claiming older glibc support than the binary really needs is not caught until runtime, where the binary fails to start and `DiagnyxLogger` drops entries with a warning.
 
@@ -66,4 +67,7 @@ npm install diagnyx-node@0.2.0
 
 # PyPI
 pip install diagnyx==0.2.0
+
+# Go
+go get github.com/nachiketg/diagnyx/packages/go@v0.2.0
 ```

@@ -160,3 +160,20 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+      # Go modules are published by git tag, and a module in a subdirectory
+      # needs a "<dir>/vX.Y.Z" tag (DX-058). Skips the push if the tag
+      # already exists, so re-running a failed release is safe.
+      - name: Tag the Go module (DX-058)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          grep -q "const Version = \"$VERSION\"" packages/go/version.go \
+            || { echo "packages/go/version.go is not at $VERSION; run scripts/bump-version.sh"; exit 1; }
+          TAG="packages/go/v$VERSION"
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "$TAG"
+          fi
+          # Ask the Go module proxy to fetch it now, so go get and pkg.go.dev see it right away.
+          curl -sSf "https://proxy.golang.org/github.com/nachiketg/diagnyx/packages/go/@v/v$VERSION.info" \
+            || echo "::warning::proxy.golang.org has not picked up $TAG yet; the first go get will fetch it"
