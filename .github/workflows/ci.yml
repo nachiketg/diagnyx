@@ -629,6 +629,66 @@ jobs:
           ' > /tmp/dx057_bundled_out.txt
           grep -q "DX057_BUNDLED_BINARY_INVOKED" /tmp/dx057_bundled_out.txt
 
+      # ── DX-058: Go SDK module ────────────────────────────────────────────────
+
+      # Installs the go directive's version (the module's floor), so newer
+      # language or library use fails here rather than for users.
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/go/go.mod
+          cache: false
+
+      - name: DX-058 - Go SDK is gofmt-clean and passes go vet
+        working-directory: packages/go
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go vet ./...
+
+      # Unit tests use the test binary as a stand-in CLI: argument building,
+      # fields, trace context, graceful failures, discovery order, and the
+      # download-on-first-use flow against a local server.
+      - name: DX-058 - Go SDK unit tests
+        working-directory: packages/go
+        run: go test -race -count=1 ./...
+
+      - name: DX-058 - Go SDK writes entries through the real CLI
+        working-directory: packages/go
+        env:
+          DIAGNYX_PATH: ${{ github.workspace }}/publish/diagnyx
+          DIAGNYX_CONFIG: /tmp/dx058.json
+          DIAGNYX_INTEGRATION_LOG: /tmp/dx058/sdk.log
+        run: |
+          mkdir -p /tmp/dx058
+          printf '{"sink":{"type":"file","file":{"path":"/tmp/dx058/sdk.log"}}}' > /tmp/dx058.json
+          go test -count=1 -run TestIntegration -v .
+          grep -q '"message":"go SDK smoke test"' /tmp/dx058/sdk.log
+
+      - name: DX-058 - Go SDK builds as a dependency with no third-party modules
+        run: |
+          mkdir -p /tmp/dx058-consumer && cd /tmp/dx058-consumer
+          cat > go.mod <<EOF
+          module example.com/consumer
+
+          go 1.22
+
+          require github.com/nachiketg/diagnyx/packages/go v0.0.0
+
+          replace github.com/nachiketg/diagnyx/packages/go => $GITHUB_WORKSPACE/packages/go
+          EOF
+          cat > main.go <<'EOF'
+          package main
+
+          import "github.com/nachiketg/diagnyx/packages/go"
+
+          func main() {
+              logger, _ := diagnyx.NewLogger("consumer")
+              _ = logger.Info("hello")
+          }
+          EOF
+          go build ./...
+          test "$(go list -m all | wc -l)" -eq 2
+
       # ── DX-030/DX-031: OTLP sink, configurable via config file only ─────────
 
       - name: DX-030 - start mock OTLP/HTTP collector
