@@ -55,6 +55,12 @@ sed -i.bak "s|\"version\": \"[^\"]*\"|\"version\": \"$VERSION\"|" "$OTLP_SAMPLE"
 rm -f "$OTLP_SAMPLE.bak"
 echo "  docs/examples/otlp-log-export.json"
 
+# 7. Go module: the version whose binary Download fetches
+GO_VERSION_FILE="$ROOT/packages/go/version.go"
+sed -i.bak "s|const Version = \"[^\"]*\"|const Version = \"$VERSION\"|" "$GO_VERSION_FILE"
+rm -f "$GO_VERSION_FILE.bak"
+echo "  packages/go/version.go"
+
 echo ""
 echo "Done. Review the diff, then commit and tag:"
 echo "  git add -A"
