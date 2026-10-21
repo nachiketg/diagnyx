@@ -14,7 +14,8 @@ diagnyx/
 ├── packages/
 │   ├── dotnet/             # diagnyx-dotnet — NuGet wrapper for .NET apps
 │   ├── node/               # diagnyx-node — npm wrapper for Node.js apps
-│   └── python/             # diagnyx — PyPI wrapper for Python apps
+│   ├── python/             # diagnyx — PyPI wrapper for Python apps
+│   └── go/                 # Go module wrapper for Go apps
 ├── docs/
 │   ├── SCHEMA.md           # Log entry JSON schema (the contract)
 │   ├── CONFIG.md           # Config file format reference
@@ -32,7 +33,7 @@ diagnyx/
 
 ## Quick Start
 
-> **Note:** Diagnyx is released and stable — the latest release is **v1.1.0**. Structured logging, OpenTelemetry/Loki/Grafana integration, and AI-assisted root-cause analysis (`diagnyx ask`) are all shipped, and v1.1.0 adds the Python SDK. Releases are published to [GitHub Releases](https://github.com/nachiketg/diagnyx/releases), NuGet, npm, and PyPI; the install commands below work today. Using the SQLite sink or metrics on v1.0.0? Upgrade: v1.0.0's binaries couldn't load SQLite (fixed in v1.1.0, see [CONFIG.md](docs/CONFIG.md#the-sqlite-native-library-diagnyxnative)).
+> **Note:** Diagnyx is released and stable — the latest release is **v1.1.0**. Structured logging, OpenTelemetry/Loki/Grafana integration, and AI-assisted root-cause analysis (`diagnyx ask`) are all shipped, and v1.1.0 adds the Python SDK. Releases are published to [GitHub Releases](https://github.com/nachiketg/diagnyx/releases), NuGet, npm, and PyPI; the install commands below work today. The Go SDK is new in Phase 4 and is published as a Go module starting with the first release after v1.1.0. Using the SQLite sink or metrics on v1.0.0? Upgrade: v1.0.0's binaries couldn't load SQLite (fixed in v1.1.0, see [CONFIG.md](docs/CONFIG.md#the-sqlite-native-library-diagnyxnative)).
 
 ### .NET
 
@@ -82,6 +83,22 @@ logger.error("Something went wrong", {"errorCode": 500})
 
 No separate CLI install needed on win-x64, linux-x64, or osx-arm64 — each platform's wheel bundles the matching `diagnyx` binary. Python 3.9+, no runtime dependencies. See [packages/python/README.md](packages/python/README.md) for details, including trace context via `contextvars` and OpenTelemetry.
 
+### Go
+
+```bash
+go get github.com/nachiketg/diagnyx/packages/go
+```
+
+```go
+import "github.com/nachiketg/diagnyx/packages/go" // package diagnyx
+
+logger, _ := diagnyx.NewLogger("my-service")
+logger.Info("App started", diagnyx.Fields{"userId": 42})
+logger.Error("Something went wrong", diagnyx.Fields{"errorCode": 500})
+```
+
+No separate CLI install needed on win-x64, linux-x64, or osx-arm64 — Go modules can't run install steps, so the first log call downloads the matching `diagnyx` binary into your user cache directory, once per machine per version (`DIAGNYX_NO_DOWNLOAD=1` turns this off). Go 1.22+, no dependencies outside the standard library. See [packages/go/README.md](packages/go/README.md) for details, including trace context via `context.Context`.
+
 ## Log Format
 
 All log entries are written as [JSON Lines](https://jsonlines.org/) (one JSON object per line). See [docs/SCHEMA.md](docs/SCHEMA.md) for the full field reference, and [docs/OTEL_MAPPING.md](docs/OTEL_MAPPING.md) for how these fields map onto the OpenTelemetry Logs Data Model.
@@ -119,11 +136,11 @@ Want an actual answer, not just the entries? `diagnyx ask "why did the payment s
   Node.js app -->|                      |   |    +-----------------------------+
                  |                      |   |
   Python app --->|                      |   |    +-----------------------------+
-                 +----------------------+   +--->|  RDBMS sink (optional)      |
-        ^              ^            ^       |    |  SQLite / Postgres /        |
-        |              |            |       |    |  MySQL / MSSQL              |
-  diagnyx-dotnet  diagnyx-node   diagnyx    |    +-----------------------------+
-  (NuGet)         (npm)          (PyPI)     |
+                 |                      |   +--->|  RDBMS sink (optional)      |
+  Go app ------->|                      |   |    |  SQLite / Postgres /        |
+                 +----------------------+   |    |  MySQL / MSSQL              |
+                                            |    +-----------------------------+
+                                            |
                                             |    +-----------------------------+
                                             +--->|  OTLP sink (optional)       |
                                             |    |  any OTel-compatible        |
@@ -137,7 +154,7 @@ Want an actual answer, not just the entries? `diagnyx ask "why did the payment s
                                                  +-----------------------------+
 ```
 
-The core CLI is a single cross-platform binary (Native AOT, no .NET runtime required). Language wrappers are thin shims that invoke the CLI — no logic lives in the wrappers.
+The core CLI is a single cross-platform binary (Native AOT, no .NET runtime required). Language wrappers are thin shims that invoke the CLI — no logic lives in the wrappers. Each app reaches the core through its language's wrapper: `diagnyx-dotnet` (NuGet), `diagnyx-node` (npm), `diagnyx` (PyPI), or the `github.com/nachiketg/diagnyx/packages/go` module.
 
 ## Phase 2: OTLP, Loki & Grafana
 
@@ -172,7 +189,7 @@ See [docs/CONFIG.md](docs/CONFIG.md#metrics) for details.
 | **v1** | Structured logger, file sink, RDBMS sinks (SQLite/Postgres/MySQL/MSSQL), .NET and Node.js SDKs | Done |
 | **Phase 2** | OpenTelemetry alignment, Grafana/Loki exporter, observability dashboards | Done |
 | **Phase 3** | AI-assisted root-cause analysis (`diagnyx ask`) — relevance-ranked retrieval, LLM-backed answers with cited sources, configurable/local providers, redaction, and a setup guide | Done |
-| **Phase 4** | Additional language SDKs — Python (done), Go, Java | In progress |
+| **Phase 4** | Additional language SDKs — Python (done), Go (done), Java | In progress |
 
 ## Contributing
 

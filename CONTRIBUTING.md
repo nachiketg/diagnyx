@@ -17,6 +17,7 @@ Thank you for your interest in contributing! Diagnyx is an open-source project a
 | `packages/dotnet/` | `diagnyx-dotnet` NuGet wrapper |
 | `packages/node/` | `diagnyx-node` npm wrapper |
 | `packages/python/` | `diagnyx` PyPI wrapper |
+| `packages/go/` | Go module wrapper (`github.com/nachiketg/diagnyx/packages/go`) |
 | `docs/` | Schema, config, and design documentation |
 
 ## Design Principles
@@ -43,6 +44,7 @@ Prefixes: `feat`, `fix`, `docs`, `test`, `chore`, `refactor`.
 - **Core (.NET)**: follow standard C# conventions; use `dotnet format` before committing.
 - **Node.js wrapper**: ESLint + Prettier; run `npm run lint` before committing.
 - **Python wrapper**: PEP 8, standard library only (no runtime dependencies), and keep it compatible with the `requires-python` floor in `packages/python/pyproject.toml` (CI runs the Python SDK checks on that version). Install it into a venv with `pip install ./packages/python` and run the scripts in `packages/python/tests/` against a built CLI.
+- **Go wrapper**: `gofmt`, `go vet`, standard library only (no third-party modules), and keep it building on the `go` version in `packages/go/go.mod` (CI runs the Go SDK checks on that version). Run `go test -race ./...` from `packages/go`; the tests need no CLI installed.
 - All public APIs must match the shape documented in `docs/SCHEMA.md` and the requirements doc.
 
 ## Claude Code Settings
@@ -54,7 +56,7 @@ Prefixes: `feat`, `fix`, `docs`, `test`, `chore`, `refactor`.
 Open a GitHub Issue with:
 - What you expected to happen.
 - What actually happened (paste relevant log output or error messages).
-- Your OS, .NET, Node.js, or Python version, and Diagnyx version.
+- Your OS, .NET, Node.js, Python, or Go version, and Diagnyx version.
 
 ## License
 
